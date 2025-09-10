@@ -37,6 +37,8 @@
 ### 1. 克隆项目
 ```bash
 git clone https://github.com/Vawet/VideoParse.git
+前端启动：
+npm start
 ```
 
 ### 2. 安装依赖
