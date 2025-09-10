@@ -32,8 +32,6 @@
 ***
 
 
-***
-
 ## 🛠️ 安装与配置
 
 ### 1. 克隆项目
@@ -80,6 +78,39 @@ VideoParse/
 ├── main.py           # 主程序
 ├── requirements.txt  # 依赖列表
 └── README.md         # 项目说明
+
+
+my-react-app/
+├── dist      
+├── node_modules
+├── public
+├── src
+│   ├── components
+│   │   ├── GMindMap.jsx   #思维导图
+│   │   ├── GNotes.jsx     #ai笔记
+│   │   ├── GPPT.jsx       #PPT
+│   │   ├── Header.jsx     
+│   │   ├── Left.jsx
+│   │   ├── NewItemModel.jsx  #新建的表单组件
+│   │   └── Video.jsx      #视频解析组件
+│   ├── pages
+│   │   ├── Home.jsx      #首页
+│   │   └── Main.jsx      #主页
+│   ├── store
+│   │   └── store.js
+│   ├── App.css
+│   ├── App.js
+│   ├── db.js
+│   ├── index.css
+│   ├── index.js
+│   └── routes.js
+├── .babelrc
+├── package-lock.json
+├── package.json
+├── postcss.config.js
+├── tailwind.config.js
+├── webpack.config.js
+└── yarn.lock
 ```
 
 ***
