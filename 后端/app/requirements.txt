@@ -1,0 +1,14 @@
+
+flask
+flask-cors
+openai
+whisper
+tqdm
+python-dotenv
+transformers
+Pillow
+torch
+numpy
+scikit-learn
+pytest
+requests
