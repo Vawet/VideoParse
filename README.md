@@ -73,6 +73,8 @@ LLM_PROVIDER=deepseek   # 只配了 DeepSeek key 时可省略；两个 key 都�
 
 其他可选环境变量：`AGENT_MODEL`、`TEXT_MODEL`、`VISION_MODEL`、`LLM_BASE_URL`、`WHISPER_MODEL`、`PUBLIC_BASE_URL`、`AGENT_MAX_STEPS`。
 
+检索：默认 BM25；设置 `RETRIEVER=hybrid` 启用 BM25 + 本地向量（`EMBED_MODEL`，默认 `BAAI/bge-small-zh-v1.5`，首次使用自动下载约 100MB）的 RRF 混合检索，模型不可用时自动降级为 BM25。对比评测：`cd 后端 && ./.venv/bin/python -m app.tests.eval.retrieval_eval`。
+
 离线测试（不需要 key / ffmpeg / GPU）：
 
 ```bash

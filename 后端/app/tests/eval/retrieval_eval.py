@@ -4,7 +4,7 @@
 import json
 import os
 
-from app.retrieval import Bm25Retriever
+from app.retrieval import Bm25Retriever, DenseRetriever, HybridRetriever
 
 # (问题, 期望命中的 golden segment 序号, 类型)
 QUERIES = [
@@ -29,7 +29,7 @@ def load_chunks():
              "text": s["text"]} for s in gold["segments"]]
 
 
-RETRIEVERS = {"bm25": Bm25Retriever}
+RETRIEVERS = {"bm25": Bm25Retriever, "dense": DenseRetriever, "hybrid": HybridRetriever}
 
 
 def evaluate(make, chunks=None, queries=QUERIES):
