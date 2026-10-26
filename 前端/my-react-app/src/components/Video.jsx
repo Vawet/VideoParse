@@ -5,7 +5,16 @@ import GNotes from './GNotes.jsx';
 import GMindMap from './GMindMap.jsx';
 import {STORES,initDB,addToStore,updateStore,getFromStoreByKey} from '../db.js';
 import axios from 'axios';
+import AgentTimeline from './AgentTimeline.jsx';
+import ChatPanel from './ChatPanel.jsx';
+import QuizPanel from './QuizPanel.jsx';
+import ReviewPanel from './ReviewPanel.jsx';
+import TeachPanel from './TeachPanel.jsx';
 const Video = ({videoId}) => {
+  // Agent 运行过程（SSE 事件）与后端 video_id（问答需要）
+  const [agentEvents, setAgentEvents] = useState([]);
+  const [agentStatus, setAgentStatus] = useState('idle'); // idle / running / done / error
+  const [serverVideoId, setServerVideoId] = useState(null);
   const [db, setDb] = useState(null);
   // 初始化数据库,检查数据库里是否有存储视频的地址和解析的内容，
   // 修复后的useEffect
@@ -32,6 +41,8 @@ useEffect(() => {
                       setAnalysis(video.analysis);
                       setPPT(video.ppt);
                       setVideoUrl(video.videoUrl);
+                      setServerVideoId(video.serverVideoId || null);
+                      setHEAVY(video.heavy_img || []);
                   }
               }
               setVideo(video);
@@ -44,7 +55,7 @@ useEffect(() => {
   init();
 }, [videoId]);
 
-  const handleUpdateVideo1=async (videoUrl)=>{
+  const handleUpdateVideo1=async (videoUrl, backendVideoId)=>{
     if(db){
       // const video={
       //   videoId:videoId,
@@ -52,6 +63,7 @@ useEffect(() => {
       //   status:'parsing'
       // }
       video.videoUrl=videoUrl;
+      if (backendVideoId) video.serverVideoId = backendVideoId;
       video.status='parsing';
       await updateStore(db, STORES.VIDEOS, video);
     }
@@ -143,9 +155,10 @@ useEffect(() => {
               if (data.success) {
                 // 原有业务逻辑不变：更新进度提示、分析视频、设置视频URL等
                 setProgressText('上传完成！正在分析视频...') ;
-                analyzeVideo(data.filepath);
+                setServerVideoId(data.video_id);
+                analyzeVideo(data.filepath, data.video_id);
                 setVideoUrl(`${API_BASE_URL}/uploads/${data.filepath}`);
-                handleUpdateVideo1(`${API_BASE_URL}/uploads/${data.filepath}`); // 注意：原videoUrl可能未更新，直接用data.filepath推导更可靠
+                handleUpdateVideo1(`${API_BASE_URL}/uploads/${data.filepath}`, data.video_id); // 注意：原videoUrl可能未更新，直接用data.filepath推导更可靠
               } else {
                 // 上传失败（后端返回success: false）
                 setProgressText(`上传失败: ${data.error || '未知错误'}`);
@@ -178,41 +191,64 @@ useEffect(() => {
       await updateStore(db, STORES.VIDEOS, video);
     }
   }
-  function analyzeVideo(filepath) {
-    fetch(`${API_BASE_URL}/analyze`, {
+  // Agent 版：异步启动任务 → 订阅 SSE 实时显示 Agent 每一步 → 结束后拉取结果
+  function analyzeVideo(filepath, backendVideoId) {
+    setAgentEvents([]);
+    setAgentStatus('running');
+    setActiveTab('agentTrace');
+    fetch(`${API_BASE_URL}/analyze/start`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ filepath: filepath })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filepath: filepath, video_id: backendVideoId })
     })
     .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP错误! 状态码: ${response.status}`);
+        if (!response.ok) throw new Error(`HTTP错误! 状态码: ${response.status}`);
+        return response.json();
+    })
+    .then((data) => {
+        if (!data.success) throw new Error(data.error || '启动分析失败');
+        const es = new EventSource(`${API_BASE_URL}/tasks/${data.task_id}/events`);
+        es.onmessage = async (msg) => {
+            const ev = JSON.parse(msg.data);
+            if (ev.type !== 'end') {
+                setAgentEvents((prev) => [...prev, ev]);
+                if (ev.type === 'tool_end' || ev.type === 'tool_start') {
+                    setProgressText(`Agent 正在执行：${ev.tool}`);
+                }
+                return;
             }
-            return response.json();
-        })
-    .then(async (data) => {
-        if (data.success) {
-            // 显示分析结果区域
-            // document.getElementById('summarySection').style.display = 'block';
-            // document.getElementById('highlightsSection').style.display = 'block';
-            // document.getElementById('segmentsSection').style.display = 'block';
-            // 隐藏上传进度
-            // document.getElementById('uploadProgress').classList.add('d-none');
-            // 表示把获取到的heavy改名为heavy_img
-            const {ppt, heavy:heavy_img}=await getPPT(data.video_id);
-            setAnalysis(data.result);
-            
-            // 这里会更新statues的值为completed！
-            handleUpdateVideo2(data.result,ppt,heavy_img);
-        } else {
-            alert(`分析失败: ${data.error}`);
-        }
+            es.close();
+            if (ev.status !== 'done') {
+                setAgentStatus('error');
+                setProgressText(`分析失败: ${ev.error || '未知错误'}`);
+                return;
+            }
+            try {
+                const res = await (await fetch(`${API_BASE_URL}/result/${data.video_id}`)).json();
+                if (!res.success) throw new Error(res.error);
+                const { ppt, heavy: heavy_img } = await getPPT(data.video_id);
+                setAnalysis(res.result);
+                setAgentStatus('done');
+                setProgressText('分析完成');
+                setUploadPercent(100);
+                setActiveTab('aiOverview');
+                // 这里会更新statues的值为completed！
+                handleUpdateVideo2(res.result, ppt, heavy_img);
+            } catch (e) {
+                setAgentStatus('error');
+                setProgressText(`获取结果失败: ${e.message}`);
+            }
+        };
+        es.onerror = () => {
+            // 连接断开（后端重启等）：不再重连，避免重复回放事件
+            es.close();
+            setAgentStatus((s) => (s === 'running' ? 'error' : s));
+        };
     })
     .catch(error => {
         console.error('分析错误:', error);
-        alert('分析发生错误',error);
+        setAgentStatus('error');
+        setProgressText(`分析发生错误: ${error.message}`);
     });
   };
   const [HEAVY,setHEAVY]=useState([]);
@@ -233,7 +269,7 @@ useEffect(() => {
               setPPT(data.ppt);
               setHEAVY(data.heavy);
               
-              return {ppy:data.ppt,heavy:data.heavy};
+              return {ppt:data.ppt,heavy:data.heavy};
           } 
       } catch (error) {
           console.error('请求出错:', error);
@@ -409,6 +445,41 @@ useEffect(() => {
             >
               PPT页面
             </button>
+            <button
+              id="agentTrace"
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'agentTrace' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
+              onClick={() => switchTab('agentTrace')}
+            >
+              🤖 Agent过程
+            </button>
+            <button
+              id="aiChat"
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiChat' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
+              onClick={() => switchTab('aiChat')}
+            >
+              💬 视频问答
+            </button>
+            <button
+              id="aiChat"
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiQuiz' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
+              onClick={() => switchTab('aiQuiz')}
+            >
+              📝 练习
+            </button>
+            <button
+              id="aiChat"
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiReview' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
+              onClick={() => switchTab('aiReview')}
+            >
+              📅 复习
+            </button>
+            <button
+              id="aiChat"
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiTeach' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
+              onClick={() => switchTab('aiTeach')}
+            >
+              🎓 备课
+            </button>
           </div>
         </div>
 
@@ -563,7 +634,12 @@ useEffect(() => {
 
         {/* AI笔记内容 */}
         {activeTab === 'aiNotes' && (
-          <GNotes textSample={analysis?.segments && Array.isArray(analysis.segments) ?analysis.segments[0].notes.content:''}></GNotes>
+          <GNotes
+            key={analysis ? 'notes-ready' : 'notes-empty'}
+            textSample={analysis?.segments && Array.isArray(analysis.segments)
+              ? analysis.segments.map((s) => s?.notes?.content ?? '').filter(Boolean).join('\n\n---\n\n')
+              : ''}
+          ></GNotes>
         )}
 
         {/* AI脑图内容 */}
@@ -574,6 +650,27 @@ useEffect(() => {
         {/* PPT页面内容 */}
         {activeTab === 'aiPpt' && (
           <GPPT aPPT={PPT}></GPPT>
+        )}
+
+        {/* Agent 运行过程 */}
+        {activeTab === 'agentTrace' && (
+          <AgentTimeline events={agentEvents} status={agentStatus}></AgentTimeline>
+        )}
+
+        {/* 视频问答 */}
+        {activeTab === 'aiChat' && (
+          <ChatPanel serverVideoId={analysis ? serverVideoId : null} apiBase={API_BASE_URL} onSeek={handleSeek}></ChatPanel>
+        )}
+
+        {/* 练习 / 复习 */}
+        {activeTab === 'aiQuiz' && (
+          <QuizPanel serverVideoId={analysis ? serverVideoId : null} apiBase={API_BASE_URL} onSeek={handleSeek}></QuizPanel>
+        )}
+        {activeTab === 'aiReview' && (
+          <ReviewPanel serverVideoId={analysis ? serverVideoId : null} apiBase={API_BASE_URL} onSeek={handleSeek}></ReviewPanel>
+        )}
+        {activeTab === 'aiTeach' && (
+          <TeachPanel serverVideoId={analysis ? serverVideoId : null} apiBase={API_BASE_URL} onSeek={handleSeek}></TeachPanel>
         )}
       </div>
     </div>
