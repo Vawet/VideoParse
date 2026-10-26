@@ -4,14 +4,21 @@ import { Icon } from '@iconify/react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+// 后端没给某一层样式时的兜底（字段名与后端一致：font_size / font_weight）
+const DEFAULT_STYLES = {
+  1: { font_size: '18px', font_weight: 'bold', color: '#2563eb' },
+  2: { font_size: '16px', font_weight: 'bold', color: '#10b981' },
+  3: { font_size: '14px', font_weight: 'normal', color: '#6b7280' },
+  4: { font_size: '12px', font_weight: 'normal', color: '#9ca3af' },
+};
+const styleOf = (levelStyles, level) =>
+  (levelStyles && levelStyles[level]) || DEFAULT_STYLES[level] || DEFAULT_STYLES[4];
+
 // 递归节点组件：渲染单个脑图节点及子节点
 const MindMapNode = ({ node, levelStyles }) => {
   // 获取当前节点的样式（优先用节点层级样式，无则用默认）
-  const nodeStyle = levelStyles[node.level] || {
-    fontSize: '14px',
-    color: '#6b7280',
-    fontWeight: 'normal'
-  };
+  const nodeStyle = styleOf(levelStyles, node.level);
+  const name = String(node.name ?? '');
 
   return (
     <div className="mindmap-node-container">
@@ -27,17 +34,17 @@ const MindMapNode = ({ node, levelStyles }) => {
       >
         {/* 提取节点名称中的 emoji（若有），无则用默认图标 */}
         <span className="node-icon">
-          {node.name.match(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+/)?.[0] || '📌'}
+          {name.match(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+/)?.[0] || '📌'}
         </span>
-        <span className="node-text truncate">{node.name.replace(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+/, '').trim()}</span>
+        <span className="node-text truncate">{name.replace(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+/, '').trim()}</span>
       </div>
 
       {/* 递归渲染子节点：纵向排列，左侧留缩进 */}
       {node.children && node.children.length > 0 && (
         <div className="mindmap-children ml-6 mt-2 flex flex-col gap-3">
-          {node.children.map((childNode) => (
+          {node.children.map((childNode, i) => (
             <MindMapNode 
-              key={childNode.id}  // 用后端返回的唯一id做key
+              key={childNode.id ?? `${node.id}-${i}`}  // 用后端返回的唯一id做key
               node={childNode} 
               levelStyles={levelStyles} 
             />
@@ -53,7 +60,8 @@ const GMindMap = ({ mindMapData }) => {
   console.log('脑图数据:', mindMapData);
 
   // 导出思维导图为PDF的函数
-  const exportMindMap = async () => {
+  const exportMindMap = async (e) => {
+    const button = e?.currentTarget;
     try {
       // 获取思维导图容器元素
       const element = document.getElementById('aiMindmapContent');
@@ -64,7 +72,6 @@ const GMindMap = ({ mindMapData }) => {
       }
 
       // 显示加载提示
-      const button = document.querySelector('button');
       const originalText = button.textContent;
       button.textContent = '导出中...';
       button.disabled = true;
@@ -113,7 +120,7 @@ const GMindMap = ({ mindMapData }) => {
 
     } catch (error) {
       console.error('导出失败:', error);
-      const button = document.querySelector('button');
+      if (!button) return;
       button.textContent = '导出失败，请重试';
       setTimeout(() => {
         button.textContent = '下载脑图';
@@ -123,8 +130,16 @@ const GMindMap = ({ mindMapData }) => {
   };
 
   // 处理加载状态（若 mindMapData 未获取或生成失败）
-  if (!mindMapData || mindMapData.mind_map?.data?.name.includes('生成失败')) {
-    const errorMsg = mindMapData?.mind_map?.data?.children?.[0]?.name || '脑图生成中...';
+  const inner = mindMapData?.mind_map;
+  const rootName = String(inner?.data?.name ?? '');
+  const hasChildren = Array.isArray(inner?.data?.children) && inner.data.children.length > 0;
+  const emptyReason = !mindMapData || !inner?.data
+    ? '脑图生成中...'
+    : rootName.includes('生成失败') ? (inner.data.children?.[0]?.name || '脑图生成失败')
+    : (!hasChildren || rootName.includes('暂无脑图')) ? '暂无脑图（视频内容较少，未能生成）'
+    : null;
+  if (emptyReason) {
+    const errorMsg = emptyReason;
     return (
       <>
         <div className="space-y-6">
@@ -138,7 +153,7 @@ const GMindMap = ({ mindMapData }) => {
               className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm h-64 flex items-center justify-center">
               <div className="text-center text-gray-400">
                 <Icon icon="mdi:mindmap" className="text-6xl mb-2"></Icon>
-                <p>脑图生成中...</p>
+                <p>{errorMsg}</p>
               </div>
             </div>
             <button
@@ -152,8 +167,9 @@ const GMindMap = ({ mindMapData }) => {
   }
 
   // 从后端数据中提取 层级数据 和 样式配置
-  const { data: mindMapStructure, config } = mindMapData.mind_map;
-  const { level_styles } = config;
+  const { data: mindMapStructure, config } = inner;
+  const level_styles = (config && config.level_styles) || {};
+  const rootStyle = styleOf(level_styles, 1);
 
   return (
     <>
@@ -169,9 +185,9 @@ const GMindMap = ({ mindMapData }) => {
             <div className="text-center mb-4">
               <h3 
                 style={{
-                  fontSize: level_styles[1].font_size,
-                  color: level_styles[1].color,
-                  fontWeight: level_styles[1].font_weight
+                  fontSize: rootStyle.font_size,
+                  color: rootStyle.color,
+                  fontWeight: rootStyle.font_weight
                 }}
                 className="truncate"
               >
