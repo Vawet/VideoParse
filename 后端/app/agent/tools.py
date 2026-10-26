@@ -144,6 +144,8 @@ def correct_transcript(ws):
     tr = _transcript(ws)
     if not tr["segments"]:
         return {"error": "没有字幕可纠正，请先 transcribe"}
+    if tr.get("source") == "visual":
+        return {"skipped": "视觉字幕来自画面描述，无需纠错"}
     text, segs = llm.correct_text(tr["segments"])
     changed = sum(1 for a, b in zip(tr["segments"], segs) if a["text"] != b["text"])
     ws.save("transcript", {"segments": segs, "text": text})
@@ -258,7 +260,8 @@ def write_frame_notes(ws, max_frames=30):
     meta = ws.meta
     fps = meta.get("fps") or 0.2
     duration = meta.get("duration") or 0
-    caps = _transcript(ws)["segments"]
+    tr = _transcript(ws)
+    caps = [] if tr.get("source") == "visual" else tr["segments"]  # 视觉字幕本身来自画面笔记，不回灌
 
     # 关键帧 n 对应时间 (n-1)/fps；它所代表的片段是 [自己的时间, 下一个关键帧的时间)
     nums = [int(os.path.splitext(os.path.basename(f))[0]) for f in files]
@@ -282,6 +285,41 @@ def write_frame_notes(ws, max_frames=30):
     ws.save("segments", segments)
     failed = sum(1 for s in segments if s["failed"])
     return {"frames_processed": len(segments), "failed": failed}
+
+
+_MD_IMG = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+
+
+def _note_to_caption(content: str, limit: int = 420) -> str:
+    """把画面笔记(markdown)压成一段纯文本描述，供摘要/脑图/检索使用。"""
+    text = _MD_IMG.sub("", content or "")
+    text = re.sub(r"^#+\s*", "", text, flags=re.M)
+    text = re.sub(r"[*_`>]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
+
+@tool("build_visual_transcript",
+      "没有语音（无音轨或识别为空）时，把关键帧笔记整理成带时间戳的'视觉字幕'，使摘要/分段/脑图/关键词/问答都能照常工作。需先 write_frame_notes。")
+def build_visual_transcript(ws):
+    if _transcript(ws)["segments"] and _transcript(ws).get("source") != "visual":
+        return {"skipped": "已有语音字幕，无需视觉字幕"}
+    segs = ws.load("segments", [])
+    out = []
+    for sg in segs:
+        if sg.get("failed"):
+            continue
+        try:
+            a, b = [media.parse_timestamp(x.strip()) for x in sg["time_range"].split(" - ")]
+        except Exception:  # noqa: BLE001
+            continue
+        text = _note_to_caption((sg.get("notes") or {}).get("content", ""))
+        if text:
+            out.append({"start_time": float(a), "end_time": float(b), "text": text})
+    if not out:
+        return {"error": "没有可用的画面笔记，请先 write_frame_notes"}
+    ws.save("transcript", {"segments": out, "text": "\n".join(x["text"] for x in out), "source": "visual"})
+    return {"segments": len(out), "source": "visual"}
 
 
 @tool(

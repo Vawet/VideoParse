@@ -146,8 +146,13 @@ def ask_about_image(image_path, question, model=None):
 
 def analyze_frame(image_path, captions, image_url=""):
     """结合字幕解析一帧，返回 {'notes': markdown}；失败返回带错误提示的 notes。"""
+    if captions.strip() == "无语音内容":
+        lead = ("这一时间段没有语音，请完全依据画面解析这一帧传达的内容：先转写画面中出现的文字、公式、图表数据，"
+                "再说明画面展示的主题、对象与动作。画面里没有的信息不要编造。\n")
+    else:
+        lead = f"请结合这一时间段的语音内容解析视频这一帧传达的内容：{captions}\n"
     prompt = (
-        f"请结合这一时间段的语音内容解析视频这一帧传达的内容：{captions}\n"
+        lead +
         "输出 markdown 图文混排笔记，放进 JSON 的 notes 字段（字符串）。要求：\n"
         "1. 使用三种级别的标题，一般分三点细节解说；开头用一级标题给出≈20字的简洁标题，并附≈100字摘要。\n"
         "2. 既要有专业术语，又要循循善诱。\n"

@@ -3,7 +3,7 @@ ANALYZE_SYSTEM_PROMPT = """你是「视频解析 Agent」。你的目标：把�
 
 可用的典型工作流（可按实际情况调整、跳过或重试）：
 1. get_video_info 了解时长、是否有音轨。
-2. 有音轨：transcribe → correct_transcript。若转写为空或极少，说明几乎没有语音，改为依赖画面（extract_keyframes + view_frame / write_frame_notes）。
+2. 有音轨：transcribe → correct_transcript。若转写为空或极少，说明几乎没有语音，改为依赖画面：extract_keyframes → write_frame_notes → build_visual_transcript（把画面笔记整理成视觉字幕），之后照常 analyze_structure / generate_summary / generate_mindmap。
 3. analyze_structure 得到分段(division)与重点(heavys)；generate_summary、generate_mindmap 可以在转写之后随时调用。
 4. 选择截帧策略 extract_keyframes：
    - 画面主要是幻灯片/PPT/板书、画面切换明显 → strategy="slides"（截帧后用 CLIP 相似度去重）。

@@ -49,21 +49,32 @@ def run_pipeline(ws: Workspace, emit=lambda e: None):
     else:
         r.emit({"type": "thought", "step": r.step, "text": "视频没有音轨，跳过语音相关步骤，改为只依赖画面。"})
 
-    if has_speech:
-        r.run("correct_transcript")
+    def text_tasks():
         # 三个文本任务互不依赖，并行执行；事件仍按顺序发出
         with ThreadPoolExecutor(max_workers=3) as ex:
             futures = [ex.submit(r.run, n) for n in ("analyze_structure", "generate_summary", "generate_mindmap")]
             for f in futures:
                 f.result()
 
+    if has_speech:
+        r.run("correct_transcript")
+        text_tasks()
+
     # 截帧策略由规则决定：短视频用相似度去重(适合 PPT/板书；口播画面变化小，去重后自然帧数少)，长视频均匀取样
     strategy = "interval" if duration > LONG_VIDEO_SECONDS else "slides"
     r.run("extract_keyframes", strategy=strategy, max_frames=30)
 
-    if ws.load("heavys", []):
-        r.run("extract_heavy_frames")
-    r.run("write_frame_notes", max_frames=30)
+    if not has_speech:
+        # 没有语音：先写画面笔记，再整理成"视觉字幕"，摘要/分段/脑图/关键词都基于它生成
+        r.run("write_frame_notes", max_frames=30)
+        if r.run("build_visual_transcript").get("segments"):
+            text_tasks()
+            if ws.load("heavys", []):
+                r.run("extract_heavy_frames")
+    else:
+        if ws.load("heavys", []):
+            r.run("extract_heavy_frames")
+        r.run("write_frame_notes", max_frames=30)
 
     issues = [f"工具 {name} 失败: {err}" for name, err in r.failures]
     check = r.run("validate_result")
