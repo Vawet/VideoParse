@@ -23,6 +23,7 @@ from app import config, tasks
 from app.agent import loop, tools
 from app.agent.state import Workspace
 from app.db import repo
+from app.services import keywords as keywords_service
 from app.services import quiz as quiz_service
 from app.services import review as review_service
 from app.services import teach as teach_service
@@ -154,6 +155,18 @@ def get_result(video_id):
     except ValueError as e:
         return _fail(str(e), 400)
     return _result_response(ws)
+
+
+@app.route("/keywords/<video_id>", methods=["GET"])
+def get_keywords(video_id):
+    """从字幕里提取关键词（TF-IDF），附出现时间点。"""
+    try:
+        Workspace(video_id, _base_url())
+    except ValueError as e:
+        return _fail(str(e), 400)
+    top = max(1, min(int(request.args.get("top", 12) or 12), 50))
+    kws = keywords_service.extract_keywords(repo.get_transcript(video_id), top)
+    return jsonify({"success": True, "keywords": kws})
 
 
 # ------------------------------------------------------------------ 问答

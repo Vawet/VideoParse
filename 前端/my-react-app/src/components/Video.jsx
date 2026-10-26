@@ -180,6 +180,17 @@ useEffect(() => {
   };
   // 分析视频
   const [analysis, setAnalysis] = useState(null);
+  // 关键词：解析完成后从后端字幕里提取（null=未取到，[]=没有内容）
+  const [keywords, setKeywords] = useState(null);
+  useEffect(() => {
+    if (!analysis || !serverVideoId) { setKeywords(null); return; }
+    let alive = true;
+    fetch(`${API_BASE_URL}/keywords/${serverVideoId}?top=12`)
+      .then((r) => r.json())
+      .then((d) => { if (alive) setKeywords(d.success ? d.keywords : []); })
+      .catch(() => { if (alive) setKeywords([]); });
+    return () => { alive = false; };
+  }, [analysis, serverVideoId]);
   const [PPT,setPPT]=useState([]);
   const handleUpdateVideo2 = async (analysis,ppt,heavy_img) => {
     if(db){
@@ -612,23 +623,33 @@ useEffect(() => {
                         </div> 
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <div
-                            className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-2">
-                                <h5 className="text-sm font-medium text-gray-800">关键词提取</h5>
-                                <iconify-icon icon="mdi:tag-outline" className="text-blue-500"></iconify-icon>
-                            </div>
-                            <p className="text-xs text-gray-500">已识别12个核心关键词</p>
+                    {/* 关键词提取：后端用 TF-IDF 从字幕里真实提取，点击跳转到首次出现的位置 */}
+                    <div className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                            <h5 className="text-sm font-medium text-gray-800">关键词提取</h5>
+                            <iconify-icon icon="mdi:tag-outline" className="text-blue-500"></iconify-icon>
                         </div>
-                        <div
-                            className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-2">
-                                <h5 className="text-sm font-medium text-gray-800">情感分析</h5>
-                                <iconify-icon icon="mdi:emotion-happy-outline" className="text-green-500"></iconify-icon>
-                            </div>
-                            <p className="text-xs text-gray-500">积极: 75%, 消极: 25%</p>
-                        </div>
+                        {keywords === null ? (
+                            <p className="text-xs text-gray-500">{analysis ? '提取中...' : '视频解析完成后自动提取'}</p>
+                        ) : keywords.length === 0 ? (
+                            <p className="text-xs text-gray-500">没有可提取的字幕内容</p>
+                        ) : (
+                            <>
+                                <p className="text-xs text-gray-500 mb-2">从字幕中提取了 {keywords.length} 个核心关键词，点击跳转到首次出现的位置</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {keywords.map((k) => (
+                                        <button
+                                            key={k.word}
+                                            onClick={() => handleSeek(k.first_time)}
+                                            title={`出现 ${k.count} 次 · 首次 ${k.first_time}`}
+                                            className="keyword-chip px-2.5 py-1 rounded-full text-xs border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                        >
+                                            {k.word}<span className="ml-1 opacity-60">{k.count}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
         )}
