@@ -421,3 +421,15 @@ body.vp {
   color: #e0f2fe; background: rgba(8,10,28,.88); border: 1px solid rgba(34,211,238,.55); backdrop-filter: blur(12px); box-shadow: 0 0 30px rgba(34,211,238,.4);
   animation: toastIn .45s cubic-bezier(.2,1.3,.3,1) both; }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 24px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+/* 表单内校验提示 */
+.form-error {
+  margin-top: 18px; padding: 9px 12px; border-radius: 10px; font-size: 13px;
+  color: #ffb4c0; background: rgba(255, 71, 107, .12); border: 1px solid rgba(255, 71, 107, .45);
+  animation: formShake .4s ease;
+}
+.form-hint { margin-top: 6px; font-size: 12px; color: #8fd8ff; opacity: .85; }
+@keyframes formShake {
+  0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); }
+}

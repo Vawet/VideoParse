@@ -15,6 +15,8 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
     }, []);
     // 获取现存文件夹的名字，用于下拉选择
   const [names, setNames] = useState([]);
+  const [error, setError] = useState('');   // 页面内校验提示（alert 容易被浏览器拦截，用户会以为按钮没反应）
+  const [saving, setSaving] = useState(false);
   useEffect(()=>{
     if(db && isOpen){  // 每次打开弹窗都刷新，才能看到刚新建的文件夹
       getNames();
@@ -56,6 +58,7 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
 
   // 表单输入变化处理
   const handleInputChange = (tab, field, value) => {
+    setError('');
     setFormData(prev => ({
       ...prev,
       [tab]: { ...prev[tab], [field]: value }
@@ -64,18 +67,21 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
 
   // 提交表单处理
   const handleSubmit = async () => {
+    if (saving) return;
+    if (!db) { setError('数据库还没准备好，请稍后再试'); return; }
     // 验证当前选项卡的表单数据
     if (activeTab === 'card') {
       const { name, belong } = formData.card;
       if (!name.trim()) {
-        alert('请输入解析卡片名称');
+        setError('请输入解析卡片名称');
         return;
       }
       if (!belong.trim()) {
-        alert('请输入文件所属');
+        setError(names.length ? '请选择文件所属' : '还没有文件夹，请先到「新建文件夹」创建一个');
         return;
       }
-      
+      setSaving(true);
+      try {
       // 不仅是videos需要更新! 所属files对应的videos数组也需要更新！
       const newVideo=await addToStore(db, STORES.VIDEOS, {
         name: formData.card.name,
@@ -91,23 +97,42 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
       const targetFile=files.find(f=>f.name===formData.card.belong);
       if(targetFile){
         targetFile.videos=[...(targetFile.videos||[]),newVideoId];
+        // 5. 将更新后的FILES数据保存回存储
+        await updateStore(db, STORES.FILES, targetFile);
       }
-      // 5. 将更新后的FILES数据保存回存储
-      await updateStore(db, STORES.FILES, targetFile);
       await onSubmit({ type: 'video'})
+      } catch (e) {
+        console.error(e);
+        setError('创建失败：' + (e?.message || e));
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
     } else {
       const { name } = formData.folder;
       if (!name.trim()) {
-        alert('请输入文件夹名称');
+        setError('请输入文件夹名称');
         return;
       }
-      
-      await addToStore(db, STORES.FILES, {
-        name: formData.folder.name,
-        videos:[]
-        // 存放文件序号的数组
-      })
-      await onSubmit({ type: 'file'})
+      if (names.includes(name.trim())) {
+        setError('已存在同名文件夹');
+        return;
+      }
+      setSaving(true);
+      try {
+        await addToStore(db, STORES.FILES, {
+          name: name.trim(),
+          videos:[]
+          // 存放文件序号的数组
+        })
+        await onSubmit({ type: 'file'})
+      } catch (e) {
+        console.error(e);
+        setError('创建失败：' + (e?.message || e));
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
     }
     // 提交后关闭弹窗并重置表单
     onClose();
@@ -116,6 +141,7 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
 
   // 重置表单数据
   const resetForm = () => {
+    setError('');
     setFormData({
       card: { name: '', belong: '', createTime: '' },
       folder: { name: '' }
@@ -150,7 +176,7 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
                 ? 'border-blue-600 text-blue-600' 
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
-            onClick={() => setActiveTab('card')}
+            onClick={() => { setError(''); setActiveTab('card'); }}
           >
             新建解析卡片
           </button>
@@ -160,7 +186,7 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
                 ? 'border-blue-600 text-blue-600' 
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
-            onClick={() => setActiveTab('folder')}
+            onClick={() => { setError(''); setActiveTab('folder'); }}
           >
             新建文件夹
           </button>
@@ -220,6 +246,9 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
                           </option>
                       ))}
                   </select>
+                  {names.length === 0 && (
+                    <p className="form-hint">还没有文件夹，先到「新建文件夹」创建一个吧。</p>
+                  )}
               </div>
 
               {/* 日期时间显示（不可修改） */}
@@ -254,6 +283,8 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
           )}
         </div>
 
+        {error && <div key={error} className="form-error" role="alert">{error}</div>}
+
         {/* 弹窗底部：提交/取消按钮 */}
         <div className="flex justify-end space-x-3 mt-8">
           <button
@@ -264,9 +295,10 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
           </button>
           <button
             onClick={handleSubmit}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-60"
           >
-            确认新建
+            {saving ? '创建中…' : '确认新建'}
           </button>
         </div>
       </div>
