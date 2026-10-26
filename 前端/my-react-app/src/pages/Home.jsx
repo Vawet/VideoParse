@@ -108,6 +108,44 @@ useEffect(() => {
 }, [db]);
 
   const [draggingId, setDraggingId] = useState(null);
+  // 排序 / 回收站
+  const [sortKey, setSortKey] = useState('date'); // date | name | id
+  const [sortDir, setSortDir] = useState('desc');
+  const [sortOpen, setSortOpen] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2400); };
+  useEffect(() => {
+    if (!sortOpen) return undefined;
+    const close = () => setSortOpen(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [sortOpen]);
+
+  // 软删除：移入回收站（可恢复）；彻底删除才真正从数据库移除
+  const patchFile = (file, patch) => {
+    const next = { ...file, ...patch };
+    setFiles((fs) => fs.map((f) => (f.videoId === file.videoId ? next : f)));
+    updateStore(db, STORES.VIDEOS, next);
+    return next;
+  };
+  const moveToTrash = (file) => { patchFile(file, { deleted: true }); showToast(`"${file.name}" 已移入回收站`); };
+  const restoreFile = (file, category) => {
+    patchFile(file, category ? { deleted: false, category } : { deleted: false });
+    showToast(`"${file.name}" 已恢复`);
+  };
+  const purgeFile = async (file) => {
+    if (!window.confirm(`彻底删除"${file.name}"？此操作不可恢复。`)) return;
+    setFiles((fs) => fs.filter((f) => f.videoId !== file.videoId));
+    await deleteFromStore(db, STORES.VIDEOS, file.videoId);
+    showToast('已彻底删除');
+  };
+  const emptyTrash = async () => {
+    const gone = files.filter((f) => f.deleted);
+    if (!gone.length || !window.confirm(`清空回收站？将彻底删除 ${gone.length} 项，不可恢复。`)) return;
+    setFiles((fs) => fs.filter((f) => !f.deleted));
+    await Promise.all(gone.map((f) => deleteFromStore(db, STORES.VIDEOS, f.videoId)));
+    showToast('回收站已清空');
+  };
   const [highlightedTarget, setHighlightedTarget] = useState(null);
 
   // 文件卡片拖拽开始
@@ -145,22 +183,29 @@ useEffect(() => {
     if (file) {
       // 处理不同目标的逻辑
       if (target === 'trash') {
-        // 从文件列表中移除(删除)
-        setFiles(files.filter(f => f.videoId !== fileId));
-        alert(`"${file.name}" 已移至回收站`);
-        // 在数据库里删除掉这个数据
-        deleteFromStore(db, STORES.VIDEOS, file.videoId);
+        if (!file.deleted) moveToTrash(file);
       } else if (target === 'all-files') {
-        // 这里可以添加移动到"所有文件"的逻辑  相当于没有移动！
-        alert(`"${file.name}" 已移动到"所有文件"`);
-      }else{
-        // 移动到指定分类 修改当前video的category字段
-        file.category=target;
-        updateStore(db, STORES.VIDEOS, file);
+        // 从回收站拖回"所有记录" = 恢复；本来就在其中则无事发生
+        if (file.deleted) restoreFile(file);
+      } else {
+        // 移动到指定分类（回收站里的拖进来则同时恢复）
+        if (file.deleted) restoreFile(file, target);
+        else patchFile(file, { category: target });
       }
     }
 }
   const navigate = useNavigate();
+  const trashCount = (files || []).filter((f) => f.deleted).length;
+  const SORTS = { date: '修改时间', name: '名称', id: '创建顺序' };
+  const visibleFiles = (files || [])
+    .filter((f) => (activeItem === 'trash' ? f.deleted : !f.deleted && (activeItem === 'all-files' || f.category === activeItem)))
+    .sort((a, b) => {
+      let r;
+      if (sortKey === 'name') r = String(a.name || '').localeCompare(String(b.name || ''), 'zh');
+      else if (sortKey === 'id') r = (a.videoId || 0) - (b.videoId || 0);
+      else r = String(a.date || '').localeCompare(String(b.date || ''));
+      return sortDir === 'asc' ? r : -r;
+    });
   const handleCardClick=(videoId)=>{
     navigate(`/main/${videoId}`)
   }
@@ -236,7 +281,8 @@ useEffect(() => {
                     <span className="font-medium">所有记录</span>
                   </a>
                 </li>
-                <li className={`sidebar-item  rounded-lg mb-1 px-2 py-2  ${highlightedTarget === "trash" ? 'bg-blue-100' : ''}`}
+                <li className={`sidebar-item  rounded-lg mb-1 px-2 py-2  ${activeItem === 'trash' ? 'bg-blue-100 active' : ''} ${highlightedTarget === "trash" ? 'bg-blue-100' : ''}`}
+                onClick={() => setActiveItem('trash')}
                 onDragOver={(e) => handleSidebarDragOver(e, 'trash')}
                 onDragLeave={handleSidebarDragLeave}
                 onDrop={(e) => handleSidebarDrop(e, 'trash')}
@@ -247,6 +293,7 @@ useEffect(() => {
                       className="text-red-500 mr-3 text-xl"
                     ></Icon>
                     <span>回收站</span>
+                    {trashCount > 0 && <span className="trash-badge">{trashCount}</span>}
                   </a>
                 </li>
               </ul>
@@ -290,16 +337,44 @@ useEffect(() => {
           className="flex-1 flex overflow-hidden transition-all duration-300"
         >
           <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
-            <Hero count={(files || []).length} categories={(categories || []).length} />
+            <Hero count={(files || []).filter((f) => !f.deleted).length} categories={(categories || []).length} />
             {/* <!-- 筛选工具栏 --> */}
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center">
                 <div className="mr-4 flex items-center">
                   <span className="text-sm text-gray-500 mr-2">排序:</span>
-                  <button className="text-gray-800 bg-white border rounded-lg px-3 py-1.5 flex items-center text-sm">
-                    <span>修改时间</span>
-                    <Icon icon="mdi:chevron-down" className="ml-1"></Icon>
-                  </button>
+                  <div className="relative">
+                    <button
+                      className="text-gray-800 bg-white border rounded-lg px-3 py-1.5 flex items-center text-sm"
+                      onClick={(e) => { e.stopPropagation(); setSortOpen((o) => !o); }}
+                    >
+                      <span>{SORTS[sortKey]}</span>
+                      <Icon icon={sortDir === 'asc' ? 'mdi:arrow-up' : 'mdi:arrow-down'} className="ml-1 text-cyan-300"></Icon>
+                      <Icon icon="mdi:chevron-down" className={`ml-1 transition-transform ${sortOpen ? 'rotate-180' : ''}`}></Icon>
+                    </button>
+                    {sortOpen && (
+                      <div className="sort-menu" onClick={(e) => e.stopPropagation()}>
+                        {Object.entries(SORTS).map(([k, label]) => (
+                          <button key={k} className={`sort-opt ${sortKey === k ? 'on' : ''}`}
+                                  onClick={() => { setSortKey(k); setSortOpen(false); }}>
+                            <Icon icon={sortKey === k ? 'mdi:check' : 'mdi:blank'} /> {label}
+                          </button>
+                        ))}
+                        <div className="sort-sep" />
+                        {[['desc', '从新到旧 / 降序', 'mdi:arrow-down'], ['asc', '从旧到新 / 升序', 'mdi:arrow-up']].map(([d, label, ic]) => (
+                          <button key={d} className={`sort-opt ${sortDir === d ? 'on' : ''}`}
+                                  onClick={() => { setSortDir(d); setSortOpen(false); }}>
+                            <Icon icon={ic} /> {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {activeItem === 'trash' && trashCount > 0 && (
+                    <button className="ml-3 text-sm px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-gray-100" onClick={emptyTrash}>
+                      <Icon icon="mdi:delete-sweep-outline" className="inline mr-1" />清空回收站
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -308,25 +383,14 @@ useEffect(() => {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold">
-                  {activeItem === 'all-files' 
-                  ? '所有记录' 
-                  : (categories || []).find(c => c.name === activeItem)?.name || '分类文件'
+                  {activeItem === 'trash' ? '回收站' : activeItem === 'all-files' ? '所有记录' : (categories || []).find(c => c.name === activeItem)?.name || '分类文件'
                   }
                 </h2>
               </div>
 
               
                <div className="grid grid-cols-2 xl:grid-cols-4 gap-6 stagger">
-                 {(files || [])
-                   .filter(file => {
-                     if (activeItem === 'all-files') {
-                       return true;
-                     } else{
-                       return file.category === activeItem;
-                     }
-                     return false;
-                   })
-                   .map((file) => (
+                 {visibleFiles.map((file) => (
                      <div
                        key={file.videoId}
                        id={`file-card-${file.videoId}`}
@@ -336,7 +400,7 @@ useEffect(() => {
                        draggable
                        onDragStart={(e) => handleDragStart(e, file.videoId)}
                        onDragEnd={(e) => handleDragEnd(e, file.videoId)}
-                       onClick={() => handleCardClick(file.videoId)}
+                       onClick={() => !file.deleted && handleCardClick(file.videoId)}
                      >
                        <div className="h-28 flex items-center justify-center hover:bg-gray-50 transition-colors">
                          <Icon icon="mdi:file" className="text-5xl text-blue-500" />
@@ -349,16 +413,26 @@ useEffect(() => {
                            <span>{file.category}</span>
                            <span>{file.date}</span>
                          </div>
+                         {file.deleted && (
+                           <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                             <button className="trash-act ok" onClick={() => restoreFile(file)}>
+                               <Icon icon="mdi:restore" /> 恢复
+                             </button>
+                             <button className="trash-act bad" onClick={() => purgeFile(file)}>
+                               <Icon icon="mdi:delete-forever-outline" /> 彻底删除
+                             </button>
+                           </div>
+                         )}
                        </div>
                      </div>
                    ))}
 
                  {/* 空状态显示 */}
-                 {(files || []).length === 0 && (
+                 {visibleFiles.length === 0 && (
                    <div className="col-span-3 text-center py-12">
                      <Icon icon="mdi:folder-open-outline" className="text-6xl text-gray-300 mx-auto mb-4" />
                      <p className="text-gray-500">
-                       {activeItem === 'all-files' ? '暂无文件' : '该分类下暂无文件'}
+                       {activeItem === 'trash' ? '回收站是空的，把卡片拖到左侧「回收站」即可暂存' : activeItem === 'all-files' ? '暂无文件' : '该分类下暂无文件'}
                      </p>
                    </div>
                  )}
@@ -369,6 +443,7 @@ useEffect(() => {
       
         </main>
       </div>
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 };
