@@ -396,6 +396,7 @@ def finish(ws, note=""):
         "heavys": ws.load("heavys", []),
         "mind_map": mind_map,
         "agent_note": note,
+        "transcript_source": _transcript(ws).get("source", "speech"),  # speech=语音字幕 / visual=画面生成的视觉字幕
     }
     with open(ws.result_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)

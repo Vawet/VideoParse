@@ -507,7 +507,13 @@ useEffect(() => {
                         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 mb-3">
                             {/* <!-- 摘要解读 --> */}
                             <div className="mb-6">
-                                <h5 className="text-base font-semibold text-gray-800 mb-3">摘要解读</h5>
+                                <h5 className="text-base font-semibold text-gray-800 mb-3">摘要解读
+                                    {analysis?.transcript_source === 'visual' && (
+                                        <span className="source-badge ml-2" title="该视频没有可识别的语音，摘要、分段、脑图与关键词均由画面内容生成">
+                                            👁 基于画面生成 · 无语音
+                                        </span>
+                                    )}
+                                </h5>
                                 <p className="text-sm text-gray-600 leading-relaxed">
                                    {analysis?.summary ?? '等待分析结果…'}
                                 </p>

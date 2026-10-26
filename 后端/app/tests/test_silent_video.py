@@ -42,6 +42,7 @@ def test_silent_pipeline_builds_visual_transcript_and_all_outputs(env, monkeypat
     assert seen["div_input"] and seen["summary_text"]        # 结构分析/摘要确实拿到了文本
     r = json.load(open(ws.result_path, encoding="utf-8"))
     assert r["summary"] == "画面讲解注意力矩阵" and r["division"]
+    assert r["transcript_source"] == "visual"
     assert keywords.extract_keywords(tr["segments"], 5)      # 关键词可用
     from app.db import repo
     assert repo.get_transcript(env.video_id)                 # 已入库，可检索/出题
