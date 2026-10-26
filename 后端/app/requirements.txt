@@ -2,7 +2,7 @@
 flask
 flask-cors
 openai
-whisper
+openai-whisper
 tqdm
 python-dotenv
 transformers
@@ -12,3 +12,7 @@ numpy
 scikit-learn
 pytest
 requests
+sqlalchemy>=2.0
+jieba
+rank_bm25
+# 使用 Postgres 时再安装: psycopg[binary]

@@ -7,28 +7,94 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import time
 
-# 1. 加载CLIP-Large模型和图片处理器
-print("正在加载CLIP-Large模型...")
-model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14")
-processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+# 1. 图片向量化后端：优先 CLIP-Large（语义级），模型不可用时自动降级为灰度结构向量（无需下载任何模型）
+#    DEDUPE_BACKEND=auto(默认) | clip | hash
+_model = None
+_processor = None
+device = None
+_backend = None  # "clip" / "hash"，首次使用时确定
 
-# 确保模型在GPU上运行（如果有）
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model.to(device)
-print(f"模型运行设备：{device}")
+
+def _clip_cached():
+    try:
+        CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+def _load_clip():
+    global _model, _processor, device
+    print("正在加载CLIP-Large模型...")
+    model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14")
+    processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    _model, _processor = model, processor
+    print(f"模型运行设备：{device}")
+
+
+def _ensure_model():
+    """确定并初始化向量化后端，返回 'clip' 或 'hash'。
+
+    本地已缓存 CLIP 时直接加载；否则在后台线程里下载，超过 CLIP_LOAD_TIMEOUT 秒(默认 90)
+    仍未完成（网络不通/过慢）就降级为 hash，避免整个解析流程卡死在下载上。
+    """
+    global _backend
+    if _backend is not None:
+        return _backend
+    want = os.getenv("DEDUPE_BACKEND", "auto").lower()
+    if want == "hash":
+        _backend = "hash"
+        return _backend
+    if want == "clip" or _clip_cached():
+        _load_clip()
+        _backend = "clip"
+        return _backend
+
+    import threading
+    box = {}
+
+    def target():
+        try:
+            _load_clip()
+            box["ok"] = True
+        except Exception as e:  # noqa: BLE001
+            box["err"] = e
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(float(os.getenv("CLIP_LOAD_TIMEOUT", "90")))
+    if box.get("ok"):
+        _backend = "clip"
+    else:
+        print("CLIP 模型加载超时/失败，降级为灰度结构相似度去重", box.get("err", ""))
+        _backend = "hash"
+    return _backend
+
+
+def _hash_vector(image):
+    """48x27 灰度、去均值、归一化后的向量；余弦相似度对整体亮度不敏感，对版面/内容变化敏感。"""
+    arr = np.asarray(image.convert("L").resize((48, 27)), dtype=np.float32).ravel()
+    arr = arr - arr.mean()
+    norm = np.linalg.norm(arr)
+    return arr / norm if norm > 1e-6 else arr
 
 
 # 2. 定义函数：将图片转换为向量（优化：添加设备支持）
 def image_to_vector(image_path):
     """
     输入：图片路径
-    输出：CLIP生成的768维向量
+    输出：CLIP 生成的 768 维向量（或降级后的灰度结构向量）
     """
     try:
+        backend = _ensure_model()
         image = Image.open(image_path).convert("RGB")
-        inputs = processor(images=image, return_tensors="pt").to(device)  # 移到对应设备
+        if backend == "hash":
+            return _hash_vector(image)
+        inputs = _processor(images=image, return_tensors="pt").to(device)  # 移到对应设备
         with torch.no_grad():
-            outputs = model(**inputs)
+            outputs = _model(**inputs)
         # 计算特征向量并移回CPU转为numpy
         vector = outputs.last_hidden_state.mean(dim=1).squeeze().cpu().numpy()
         return vector
@@ -88,6 +154,18 @@ def process_ordered_frames(folder_path, similarity_threshold=0.85):
 
     total_images = len(image_files)
     print(f"发现 {total_images} 张有序抽帧图片，开始处理...")
+
+    # 灰度结构向量的相似度分布与 CLIP 完全不同（相同帧恰为 1.0，换页约 0.5-0.7），
+    # 因此 hash 后端使用独立阈值，忽略外部传入的（按 CLIP 经验给的）阈值
+    if _ensure_model() == "hash":
+        similarity_threshold = float(os.getenv("HASH_SIMILARITY_THRESHOLD", "0.9"))
+        print(f"使用灰度结构去重，阈值固定为 {similarity_threshold}")
+
+    # 灰度结构向量的相似度分布与 CLIP 完全不同（相同帧恰为 1.0，换页约 0.5-0.7），
+    # 因此 hash 后端使用独立阈值，忽略外部传入的（按 CLIP 经验给的）阈值
+    if _ensure_model() == "hash":
+        similarity_threshold = float(os.getenv("HASH_SIMILARITY_THRESHOLD", "0.9"))
+        print(f"使用灰度结构去重，阈值固定为 {similarity_threshold}")
 
     # 创建临时文件夹存放保留的图片
     temp_folder = os.path.join(folder_path, "temp_kept_frames")
@@ -188,3 +266,5 @@ def generate_ppt(folder_path,threshold_input):
     finally:
         end_time = time.time()
         print(f"\n总耗时：{end_time - start_time:.2f}秒")
+    return _backend  # 实际使用的向量化后端: "clip" / "hash"
+    return _backend  # 实际使用的向量化后端: "clip" / "hash"

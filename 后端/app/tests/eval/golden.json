@@ -1,0 +1,21 @@
+{
+  "video_id": "eval-video",
+  "duration": 120,
+  "segments": [
+    {"start_time": 0,  "end_time": 15, "text": "大家好，今天我们来讲一下Transformer模型的核心思想。"},
+    {"start_time": 15, "end_time": 35, "text": "自注意力机制中，每个词会生成查询、键和值三个向量。"},
+    {"start_time": 35, "end_time": 55, "text": "通过查询和键的点积计算注意力权重，再对值做加权求和。"},
+    {"start_time": 55, "end_time": 75, "text": "多头注意力把向量切成多份并行计算，让模型同时关注不同的子空间。"},
+    {"start_time": 75, "end_time": 95, "text": "由于注意力本身不包含顺序信息，所以需要加入位置编码。"},
+    {"start_time": 95, "end_time": 120, "text": "Transformer的优势是可以并行计算，训练速度比循环神经网络快很多。"}
+  ],
+  "questions": [
+    {"q": "自注意力里每个词会生成哪三个向量？", "answerable": true, "expect_range": [15, 35]},
+    {"q": "注意力权重是怎么算出来的？", "answerable": true, "expect_range": [35, 55]},
+    {"q": "多头注意力是做什么的？", "answerable": true, "expect_range": [55, 75]},
+    {"q": "为什么要加位置编码？", "answerable": true, "expect_range": [75, 95]},
+    {"q": "Transformer 相比循环神经网络有什么优势？", "answerable": true, "expect_range": [95, 120]},
+    {"q": "视频里有没有讲区块链的共识算法？", "answerable": false},
+    {"q": "老师推荐了哪本参考书？", "answerable": false}
+  ]
+}
