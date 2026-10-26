@@ -9,6 +9,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # 启动后端（后台运行）
 echo "📡 启动后端服务..."
 cd "$PROJECT_DIR/后端"
+[ -f ".venv/bin/activate" ] && source .venv/bin/activate  # 优先使用后端虚拟环境(含 ffmpeg)
 pip install -r app/requirements.txt > /dev/null 2>&1
 python -m app.main &
 BACKEND_PID=$!
