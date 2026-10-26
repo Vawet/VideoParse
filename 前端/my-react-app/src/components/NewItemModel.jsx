@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 // 假设你已导入 Icon 组件（若使用第三方图标库需确保路径正确）
 import { Icon } from '@iconify/react';
 import {STORES,initDB,addToStore,getAllFromStore,getFromStoreByKey,updateStore,deleteFromStore} from '../db.js';
@@ -15,10 +16,10 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
     // 获取现存文件夹的名字，用于下拉选择
   const [names, setNames] = useState([]);
   useEffect(()=>{
-    if(db){
+    if(db && isOpen){  // 每次打开弹窗都刷新，才能看到刚新建的文件夹
       getNames();
     }
-  },[db])
+  },[db, isOpen])
   const getNames = async () => {
     const files = await getAllFromStore(db, STORES.FILES);
     setNames(files.map(file => file.name));
@@ -125,14 +126,14 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
   // 弹窗未打开时不渲染
   if (!isOpen) return null;
 
-  return (
-    // {/* 弹窗遮罩层 */}
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+  // 用 portal 渲染到 body：避免被带 backdrop-filter 的祖先(侧边栏)改变 fixed 的定位基准
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay">
       {/* 弹窗容器 */}
-      <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-2xl">
+      <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-2xl modal-card">
         {/* 弹窗头部：标题 + 关闭按钮 */}
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold text-gray-800">新建项目</h3>
+          <h3 className="text-xl font-bold neon-text">新建项目</h3>
           <button 
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 transition"
@@ -269,7 +270,8 @@ const NewItemModal = ({ isOpen, onClose, onSubmit }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 export default NewItemModal;

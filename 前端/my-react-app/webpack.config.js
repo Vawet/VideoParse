@@ -6,6 +6,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
+    publicPath: '/', // 刷新 /main/:id 这类子路径时也能正确加载 bundle
   },
   module: {
     rules: [

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import Header from "../components/Header.jsx"; // 导入顶部导航栏
 import { Icon } from "@iconify/react";
 import NewItemModal from "../components/NewItemModel.jsx";
+import Hero from "../components/Hero.jsx";
 import { useNavigate } from 'react-router-dom'; // React Router v6+ 推荐用法
 import {STORES,initDB,addToStore,getAllFromStore,getFromStoreByKey,updateStore,deleteFromStore} from '../db.js';
 const Home = () => {
@@ -169,7 +170,7 @@ useEffect(() => {
   // }
   
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden page-enter">
       <Header />
       <div className="flex flex-1 overflow-hidden">
         {/* <!-- 左侧导航栏 - 添加展开/收起功能 --> */}
@@ -289,6 +290,7 @@ useEffect(() => {
           className="flex-1 flex overflow-hidden transition-all duration-300"
         >
           <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+            <Hero count={(files || []).length} categories={(categories || []).length} />
             {/* <!-- 筛选工具栏 --> */}
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center">
@@ -314,7 +316,7 @@ useEffect(() => {
               </div>
 
               
-               <div className="grid grid-cols-4 gap-6">
+               <div className="grid grid-cols-2 xl:grid-cols-4 gap-6 stagger">
                  {(files || [])
                    .filter(file => {
                      if (activeItem === 'all-files') {
@@ -328,7 +330,7 @@ useEffect(() => {
                      <div
                        key={file.videoId}
                        id={`file-card-${file.videoId}`}
-                       className={`file-card rounded-xl bg-white overflow-hidden shadow-sm 
+                       className={`file-card tilt rounded-xl bg-white overflow-hidden shadow-sm 
                          transition-all duration-200 cursor-move
                          ${draggingId === file.videoId ? "opacity-50" : ""}`}
                        draggable

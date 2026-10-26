@@ -43,7 +43,7 @@ const Left = ({ sidebarCollapsed = true, onToggle }) => {
           <button
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg w-full flex items-center justify-center mb-4 transition"
           >
-            <Icon icon='mdi:home-outline' className="mr-1 text-xl" />
+            <Icon icon='mdi:home-outline' className={sidebarCollapsed ? 'text-2xl' : 'mr-1 text-xl'} />
             {!sidebarCollapsed && <span>返回主页</span>}
           </button>
         </Link>

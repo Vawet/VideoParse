@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getClientId } from '../utils/clientId';
+import { burstFromEl } from '../utils/fx';
 
 // 薄弱点 + 复习计划：日期/条目/时间戳由后端按答题记录生成，LLM 只写每天一句建议
 const ReviewPanel = ({ serverVideoId, apiBase, onSeek }) => {
@@ -40,9 +41,10 @@ const ReviewPanel = ({ serverVideoId, apiBase, onSeek }) => {
     }
   };
 
-  const toggle = async (item) => {
+  const toggle = async (item, el) => {
     const isDone = done.includes(item.id);
     setDone(isDone ? done.filter((i) => i !== item.id) : [...done, item.id]);
+    if (!isDone) burstFromEl(el, 3);
     await fetch(`${apiBase}/review/done`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: clientId, course_id: courseId, item_id: item.id, done: !isDone }),
@@ -79,14 +81,15 @@ const ReviewPanel = ({ serverVideoId, apiBase, onSeek }) => {
         </div>
       )}
       {plan && (
-        <div className="space-y-2">
+        <div className="space-y-2 stagger">
           {plan.days.map((d) => (
             <div key={d.date} className="border rounded p-2 bg-white">
               <div className="font-medium">{d.date}　<span className="text-gray-400">{d.minutes} 分钟</span></div>
               {d.tip && <div className="text-gray-500 text-xs mb-1">💡 {d.tip}</div>}
+              {d.items.length === 0 && <div className="text-xs text-gray-400 py-1">🌙 机动日：查漏补缺 / 自由复习</div>}
               {d.items.map((it) => (
                 <div key={it.id} className="flex items-start gap-2 py-1">
-                  <input type="checkbox" checked={done.includes(it.id)} onChange={() => toggle(it)} />
+                  <input type="checkbox" checked={done.includes(it.id)} onChange={(e) => toggle(it, e.target)} />
                   <div className={done.includes(it.id) ? 'line-through text-gray-400' : ''}>
                     <div>{it.topic}　<span className="text-gray-400">{it.minutes} 分钟</span></div>
                     <div className="text-xs text-gray-500">{it.reason}</div>

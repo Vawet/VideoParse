@@ -6,7 +6,7 @@ import { getClientId } from '../utils/clientId';
 const CitationChips = ({ citations, currentVideoId, onSeek }) => {
   if (!citations || citations.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
+    <div className="flex flex-wrap gap-1 mt-1 chips-pop">
       {citations.map((c, i) => {
         const sameVideo = !c.video_id || c.video_id === currentVideoId;
         const label = `${c.video_title && c.video_id ? c.video_title + ' ' : ''}${c.time}`;
@@ -171,7 +171,7 @@ const ChatPanel = ({ serverVideoId, apiBase, onSeek }) => {
           </p>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
+          <div key={i} className={`msg-in ${m.role === 'user' ? 'text-right msg-user' : 'text-left msg-bot'}`}>
             <div
               className={`inline-block max-w-[90%] rounded-lg px-3 py-2 text-sm ${
                 m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
@@ -187,7 +187,13 @@ const ChatPanel = ({ serverVideoId, apiBase, onSeek }) => {
             )}
           </div>
         ))}
-        {loading && <div className="text-xs text-blue-500">Agent 正在检索字幕/查看画面…</div>}
+        {loading && (
+          <div className="msg-in text-left">
+            <div className="inline-flex items-center gap-2 rounded-lg px-3 py-2 bg-gray-100 text-xs text-blue-500">
+              <span className="think-dots"><i /><i /><i /></span> Agent 正在检索字幕/查看画面…
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
       <div className="flex gap-2 pt-3 border-t border-gray-200 mt-3">

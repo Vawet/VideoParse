@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { getClientId } from '../utils/clientId';
+import { burstFromEl } from '../utils/fx';
 
 // 按需出题：题目全部带"字幕原话+时间戳"依据，答完才显示答案与解析
 const QuizPanel = ({ serverVideoId, apiBase, onSeek }) => {
@@ -29,11 +30,14 @@ const QuizPanel = ({ serverVideoId, apiBase, onSeek }) => {
     }
   };
 
-  const submit = async (q) => {
+  const submit = async (q, btn) => {
     const answer = picked[q.id];
     if (!answer) return;
     const data = await post(`/quiz/${quiz.quiz_id}/answer`, { client_id: getClientId(), question_id: q.id, answer });
-    if (data.success) setResults((r) => ({ ...r, [q.id]: data }));
+    if (data.success) {
+      setResults((r) => ({ ...r, [q.id]: data }));
+      if (data.correct) burstFromEl(btn, 7); // 答对撒彩带
+    }
     else setError(data.error);
   };
 
@@ -66,7 +70,7 @@ const QuizPanel = ({ serverVideoId, apiBase, onSeek }) => {
       {quiz?.questions.map((q, idx) => {
         const res = results[q.id];
         return (
-          <div key={q.id} className="border rounded p-3 text-sm bg-white">
+          <div key={q.id} className="border rounded p-3 text-sm bg-white quiz-card" style={{ animationDelay: `${idx * 90}ms` }}>
             <div className="font-medium mb-2">{idx + 1}. {q.stem}</div>
             {q.qtype === 'blank' ? (
               <input className="border rounded px-2 py-1 w-full" disabled={!!res} placeholder="填写答案"
@@ -84,10 +88,10 @@ const QuizPanel = ({ serverVideoId, apiBase, onSeek }) => {
             )}
             {!res && (
               <button className="mt-2 px-3 py-1 bg-gray-800 text-white rounded disabled:opacity-40"
-                      disabled={!picked[q.id]} onClick={() => submit(q)}>提交</button>
+                      disabled={!picked[q.id]} onClick={(e) => submit(q, e.currentTarget)}>提交</button>
             )}
             {res && (
-              <div className={`mt-2 p-2 rounded ${res.correct ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+              <div className={`mt-2 p-2 rounded ${res.correct ? 'bg-green-50 text-green-800 result-ok' : 'bg-red-50 text-red-800 result-bad'}`}>
                 <div>{res.correct ? '✅ 回答正确' : `❌ 回答错误，正确答案：${res.answer}`}</div>
                 {res.explanation && <div className="mt-1">{res.explanation}</div>}
                 <div className="mt-1 flex flex-wrap gap-1">

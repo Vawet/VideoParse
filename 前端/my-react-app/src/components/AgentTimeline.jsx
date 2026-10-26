@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Icon } from '@iconify/react';
 
 const LABELS = {
   get_video_info: '读取视频信息',
@@ -14,6 +15,9 @@ const LABELS = {
   validate_result: '校验结果完整性',
   finish: '汇总并保存结果',
 };
+// 用于估算进度：流水线的主干步骤
+const MAIN_STEPS = ['get_video_info', 'transcribe', 'correct_transcript', 'analyze_structure', 'generate_summary',
+  'generate_mindmap', 'extract_keyframes', 'extract_heavy_frames', 'write_frame_notes', 'validate_result', 'finish'];
 
 // 把工具返回的 observation 压成一行人话
 function summarize(obs) {
@@ -27,6 +31,13 @@ function summarize(obs) {
   });
   return parts.slice(0, 5).join(' · ');
 }
+
+const NodeIcon = ({ s }) => {
+  if (s.kind === 'thought') return <Icon icon="mdi:thought-bubble-outline" className="text-lg text-violet-300" />;
+  if (s.kind === 'error' || s.state === 'error') return <Icon icon="mdi:alert-circle" className="text-lg text-red-500" />;
+  if (s.state === 'running') return <span className="tl-spinner" />;
+  return <Icon icon="mdi:check-bold" className="text-lg text-green-500" />;
+};
 
 const AgentTimeline = ({ events = [], status }) => {
   const steps = useMemo(() => {
@@ -46,34 +57,61 @@ const AgentTimeline = ({ events = [], status }) => {
     return list;
   }, [events]);
 
+  const finished = new Set(steps.filter((s) => s.kind === 'tool' && s.state === 'ok').map((s) => s.tool));
+  const pct = status === 'done' ? 100 : Math.min(97, Math.round((MAIN_STEPS.filter((t) => finished.has(t)).length / MAIN_STEPS.length) * 100));
+  const running = status === 'running';
+
   if (steps.length === 0) {
-    return <p className="text-sm text-gray-500">{status === 'running' ? 'Agent 正在启动…' : '暂无 Agent 运行记录'}</p>;
+    return (
+      <div className="tl-empty">
+        {running ? <div className="radar"><i /><i /><i /></div> : <Icon icon="mdi:robot-outline" className="text-5xl text-gray-400" />}
+        <p className="text-sm text-gray-500 mt-4">{running ? 'Agent 正在启动…' : '暂无 Agent 运行记录，上传视频后这里会实时显示它在做什么'}</p>
+      </div>
+    );
   }
 
   return (
-    <ol className="space-y-3">
-      {steps.map((s, i) => (
-        <li key={i} className="flex items-start gap-3">
-          <span className="mt-0.5 w-5 text-center">
-            {s.kind === 'thought' ? '💭' : s.kind === 'error' ? '❌' : s.state === 'running' ? '⏳' : s.state === 'ok' ? '✅' : '⚠️'}
-          </span>
-          <div className="flex-1 min-w-0">
-            {s.kind === 'tool' ? (
-              <>
-                <div className="text-sm font-medium text-gray-800">{LABELS[s.tool] || s.tool}</div>
-                {s.args && Object.keys(s.args).length > 0 && (
-                  <div className="text-xs text-gray-400 break-all">{JSON.stringify(s.args)}</div>
-                )}
-                {s.summary && <div className="text-xs text-gray-500 break-all">{s.summary}</div>}
-              </>
-            ) : (
-              <div className={`text-sm ${s.kind === 'error' ? 'text-red-600' : 'text-gray-600 italic'}`}>{s.text}</div>
-            )}
+    <div>
+      <div className="tl-head">
+        <div className="radar sm" style={{ opacity: running ? 1 : 0.35 }}><i /><i /><i /></div>
+        <div className="flex-1">
+          <div className="flex justify-between text-xs mb-1.5">
+            <span className="tracking-widest text-gray-600">
+              {status === 'done' ? 'COMPLETED' : status === 'error' ? 'FAILED' : 'AGENT RUNNING'}
+            </span>
+            <span className="neon-text font-bold">{pct}%</span>
           </div>
-        </li>
-      ))}
-      {status === 'running' && <li className="text-xs text-blue-500 pl-8">Agent 思考中…</li>}
-    </ol>
+          <div className="tl-bar"><div className={`tl-fill ${running ? 'live' : ''} ${status === 'error' ? 'bad' : ''}`} style={{ width: `${pct}%` }} /></div>
+        </div>
+      </div>
+
+      <ol className="tl-list">
+        {steps.map((s, i) => (
+          <li key={i} className={`tl-item ${s.state === 'running' ? 'is-running' : ''}`} style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+            <span className="tl-node"><NodeIcon s={s} /></span>
+            <div className="flex-1 min-w-0 tl-card">
+              {s.kind === 'tool' ? (
+                <>
+                  <div className="text-sm font-semibold text-gray-800">{LABELS[s.tool] || s.tool}</div>
+                  {s.args && Object.keys(s.args).length > 0 && (
+                    <div className="text-xs text-gray-400 break-all font-mono">{JSON.stringify(s.args)}</div>
+                  )}
+                  {s.summary && <div className="text-xs text-gray-500 break-all mt-0.5">{s.summary}</div>}
+                </>
+              ) : (
+                <div className={`text-sm ${s.kind === 'error' ? 'text-red-600' : 'text-gray-600 italic'}`}>{s.text}</div>
+              )}
+            </div>
+          </li>
+        ))}
+        {running && (
+          <li className="tl-item">
+            <span className="tl-node"><span className="think-dots"><i /><i /><i /></span></span>
+            <div className="text-xs text-blue-500 pt-2">Agent 思考中…</div>
+          </li>
+        )}
+      </ol>
+    </div>
   );
 };
 

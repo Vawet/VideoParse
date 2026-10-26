@@ -13,7 +13,7 @@ const Main = ({videoId}) => {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden page-enter">
         <Header />
         <div className="flex flex-1 overflow-hidden">
             <Left sidebarCollapsed={sidebarCollapsed} onToggle={handleSidebarToggle}/>

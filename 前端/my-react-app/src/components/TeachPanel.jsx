@@ -70,7 +70,7 @@ const TeachPanel = ({ apiBase, onSeek, serverVideoId }) => {
       {error && <p className="text-red-600">⚠️ {error}</p>}
 
       {plan && (
-        <div className="space-y-3">
+        <div className="space-y-3 stagger">
           <div className="flex items-center gap-3">
             <h4 className="font-semibold">{plan.topic}（第 {plan.version} 版 · {plan.minutes} 分钟）</h4>
             <button className="px-3 py-1 bg-gray-800 text-white rounded" onClick={() => exportPptx(plan)}>导出 PPTX</button>

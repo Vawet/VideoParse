@@ -377,7 +377,7 @@ useEffect(() => {
 
       {/* 视频预览区域 */}
       {videoUrl && (
-        <div id="videoPreviewContainer" className="mt-4">
+        <div id="videoPreviewContainer" className={`mt-4 ${agentStatus === 'running' ? 'scanning' : ''}`}>
           <video
             id="videoPreview"
             src={videoUrl}
@@ -385,6 +385,7 @@ useEffect(() => {
             controls
             className="w-full max-w-4xl mx-auto"
           />
+          {agentStatus === 'running' && <div className="scan-badge"><span className="live-dot" /> AI 正在解析视频…</div>}
         </div>
       )}
     </div>
@@ -460,21 +461,21 @@ useEffect(() => {
               💬 视频问答
             </button>
             <button
-              id="aiChat"
+              id="aiQuiz"
               className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiQuiz' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
               onClick={() => switchTab('aiQuiz')}
             >
               📝 练习
             </button>
             <button
-              id="aiChat"
+              id="aiReview"
               className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiReview' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
               onClick={() => switchTab('aiReview')}
             >
               📅 复习
             </button>
             <button
-              id="aiChat"
+              id="aiTeach"
               className={`px-4 py-2 rounded-t-lg text-sm font-medium border-t-2 transition-colors ${activeTab === 'aiTeach' ? 'bg-blue-50 text-blue-600 border-blue-500' : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-300'}`}
               onClick={() => switchTab('aiTeach')}
             >
