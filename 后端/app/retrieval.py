@@ -106,7 +106,8 @@ class DenseRetriever(Retriever):
             return []
         q = self.embedder.encode([_QUERY_PREFIX + query], normalize_embeddings=True, show_progress_bar=False)[0]
         sims = self.vecs @ q
-        return sorted(((i, float(sims[i])) for i in range(len(sims))), key=lambda t: -t[1])
+        floor = float(os.getenv("EMBED_MIN_SIM", "0.40"))  # 无关问题也会有"最相近"片段，低于阈值视为未命中
+        return sorted(((i, float(sims[i])) for i in range(len(sims)) if sims[i] >= floor), key=lambda t: -t[1])
 
     def search(self, query: str, top_k: int = 5) -> List[Hit]:
         return [_make_hit(self.chunks, i, sc) for i, sc in self.ranked(query)[:max(1, int(top_k))]]

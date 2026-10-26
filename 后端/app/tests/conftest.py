@@ -31,3 +31,9 @@ def learn_env(tmp_path, monkeypatch):
     repo.index_video("vid-learn", SEGMENTS, 70.0)
     yield types.SimpleNamespace(ws=ws, segments=SEGMENTS, tmp=tmp_path)
     session.reset_engine()
+
+
+@pytest.fixture(autouse=True)
+def _offline_retriever(monkeypatch):
+    """离线测试固定走 BM25，避免加载真实 embedding 模型；混合检索见 test_hybrid.py。"""
+    monkeypatch.setenv("RETRIEVER", "bm25")
