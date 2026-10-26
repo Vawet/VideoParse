@@ -2,6 +2,8 @@
 import logging
 import os
 
+from app import config  # noqa: F401  (确保 ffmpeg 兜底已加入 PATH)
+
 log = logging.getLogger(__name__)
 
 _model = None
@@ -25,6 +27,7 @@ def _get_model():
 
 
 _SENT_END = set("。！？!?；;.")
+_SOFT_BREAK = set("，,、：:")
 MAX_SEG_SEC = float(os.getenv("ASR_MAX_SEG_SEC", "8"))
 
 
@@ -35,17 +38,30 @@ def split_segment(seg: dict, max_sec: float = None) -> list:
     words = seg.get("words") or []
     if not words:
         return [whole] if whole["text"] else []
-    out, buf, start = [], "", None
+    out, cur = [], []
+
+    def flush(items):
+        text = "".join(w["word"] for w in items).strip()
+        if text:
+            out.append({"start_time": items[0]["start"], "end_time": items[-1]["end"], "text": text})
+
     for w in words:
-        if start is None:
-            start = w["start"]
-        buf += w["word"]
-        if (buf.strip() and buf.strip()[-1] in _SENT_END) or w["end"] - start >= max_sec:
-            if buf.strip():
-                out.append({"start_time": start, "end_time": w["end"], "text": buf.strip()})
-            buf, start = "", None
-    if buf.strip():
-        out.append({"start_time": start, "end_time": words[-1]["end"], "text": buf.strip()})
+        cur.append(w)
+        text = "".join(x["word"] for x in cur).strip()
+        if text and text[-1] in _SENT_END:
+            flush(cur)
+            cur = []
+        elif w["end"] - cur[0]["start"] >= max_sec:
+            # 过长：优先在最近的逗号/顿号处断开，避免把词切成两半
+            cut = next((i for i in range(len(cur) - 1, 0, -1) if cur[i - 1]["word"].strip()[-1:] in _SOFT_BREAK), None)
+            if cut:
+                flush(cur[:cut])
+                cur = cur[cut:]
+            else:
+                flush(cur)
+                cur = []
+    if cur:
+        flush(cur)
     return out
 
 

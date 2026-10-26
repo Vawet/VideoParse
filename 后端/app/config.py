@@ -22,6 +22,29 @@ DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{os.path.join(DATA_FOLDE
 for _folder in (UPLOAD_FOLDER, FRAMES_FOLDER, AUDIO_FOLDER, OUTPUT_FOLDER, DATA_FOLDER):
     os.makedirs(_folder, exist_ok=True)
 
+
+
+def _ensure_ffmpeg():
+    """系统没有 ffmpeg 时，用 imageio_ffmpeg 自带的二进制兜底（Whisper 与 media 都按名字调用 ffmpeg）。"""
+    import shutil
+    if shutil.which("ffmpeg"):
+        return
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        shim = os.path.join(DATA_FOLDER, "bin")
+        os.makedirs(shim, exist_ok=True)
+        link = os.path.join(shim, "ffmpeg")
+        if not os.path.exists(link):
+            os.symlink(exe, link)
+        os.environ["PATH"] = shim + os.pathsep + os.environ.get("PATH", "")
+        logging.getLogger(__name__).info("使用内置 ffmpeg: %s", exe)
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning("未找到 ffmpeg，音视频处理将不可用: %s", e)
+
+
+_ensure_ffmpeg()
+
 # ---------------------------------------------------------------- 大模型供应商
 # LLM_PROVIDER=dashscope(阿里云千问) | deepseek；不设置时：只配了 DEEPSEEK_API_KEY 就用 deepseek，否则用 dashscope
 PROVIDERS = {
