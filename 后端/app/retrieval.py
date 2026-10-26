@@ -141,8 +141,8 @@ def _make_hit(chunks: List[dict], i: int, score: float) -> Hit:
 
 
 def _make(chunks: List[dict]) -> Retriever:
-    """RETRIEVER=bm25 (默认) | hybrid"""
-    return HybridRetriever(chunks) if os.getenv("RETRIEVER", "bm25").lower() == "hybrid" else Bm25Retriever(chunks)
+    """RETRIEVER=hybrid (默认) | bm25"""
+    return HybridRetriever(chunks) if os.getenv("RETRIEVER", "hybrid").lower() == "hybrid" else Bm25Retriever(chunks)
 
 
 # ------------------------------------------------------------------ 缓存（按课程）
