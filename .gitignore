@@ -7,3 +7,9 @@ __pycache__/
 后端/app/outputs/
 后端/app/uploads/
 后端/app/data/
+
+.harness/runs/*
+!.harness/runs/.gitkeep
+
+后端/dsh_runtime/node_modules/
+前端/my-react-app/dist/
