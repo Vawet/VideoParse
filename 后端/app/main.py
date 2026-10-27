@@ -19,7 +19,7 @@ import uuid
 from flask import Flask, Response, jsonify, make_response, request, send_from_directory
 from flask_cors import CORS
 
-from app import config, tasks
+from app import config, tasks, upload_gate
 from app.agent import loop, tools
 from app.agent.state import Workspace
 from app.db import repo
@@ -46,8 +46,24 @@ def _fail(msg, code=200):
 
 
 # ------------------------------------------------------------------ 上传
+@app.route("/upload/question", methods=["GET"])
+def upload_question():
+    return jsonify({"success": True, "required": upload_gate.enabled(), "question": upload_gate.question()})
+
+
+@app.route("/upload/verify", methods=["POST"])
+def upload_verify():
+    data = request.get_json(silent=True) or {}
+    token, err = upload_gate.verify(str(data.get("answer", "")), request.remote_addr or "?")
+    if err:
+        return _fail(err, 429 if "过多" in err else 403)
+    return jsonify({"success": True, "token": token})
+
+
 @app.route("/upload", methods=["POST"])
 def upload_file():
+    if not upload_gate.consume(request.form.get("token", "")):
+        return _fail("请先回答问题验证身份（令牌无效或已过期）", 403)
     if "video" not in request.files:
         return _fail("未找到视频文件")
     file = request.files["video"]

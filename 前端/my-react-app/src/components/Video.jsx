@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react'; // 添加Icon导入
 import GPPT from './GPPT.jsx'; // 导入PPT组件
 import GNotes from './GNotes.jsx';
 import GMindMap from './GMindMap.jsx';
+import UploadGate from './UploadGate.jsx';
 import {STORES,initDB,addToStore,updateStore,getFromStoreByKey} from '../db.js';
 import axios from 'axios';
 import AgentTimeline from './AgentTimeline.jsx';
@@ -88,10 +89,43 @@ useEffect(() => {
   const [progressText, setProgressText] = useState('');
   const [uploadPercent,setUploadPercent]=useState(0);
   const API_BASE_URL = 'http://localhost:5000'
-  const handleVideoFile = (file) => {
+  // 上传前必须先回答问题：答对后端才发一次性令牌，上传时带上
+  const [gate, setGate] = useState(null); // {file, question}
+  const handleVideoFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('video/')) { alert('请上传有效的视频文件'); return; }
+    try {
+      const q = await fetch(`${API_BASE_URL}/upload/question`).then((r) => r.json());
+      if (q.required) { setGate({ file, question: q.question }); return; }
+    } catch (e) {
+      setProgressText('无法连接后端，请确认服务已启动');
+      return;
+    }
+    startUpload(file, '');
+  };
+  const cancelGate = () => {
+    setGate(null);
+    if (videoUploadRef.current) videoUploadRef.current.value = '';
+  };
+  const submitGate = async (answer) => {
+    try {
+      const d = await fetch(`${API_BASE_URL}/upload/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer }),
+      }).then((r) => r.json());
+      if (!d.success) return d.error || '验证失败';
+      const file = gate.file;
+      setGate(null);
+      startUpload(file, d.token);
+      return null;
+    } catch (e) {
+      return '无法连接后端';
+    }
+  };
+  const startUpload = (file, token) => {
     if (file && file.type.startsWith('video/')) {
             const formData = new FormData();
             formData.append('video', file);
+            formData.append('token', token || '');
 
             // 发送上传请求
             // fetch(`${API_BASE_URL}/upload`, {
@@ -174,8 +208,6 @@ useEffect(() => {
                 
               }
             });
-    } else if (file) {
-      alert('请上传有效的视频文件');
     }
   };
   // 分析视频
@@ -367,6 +399,7 @@ useEffect(() => {
         onChange={handleFileChange}
         className="hidden"
       />
+      <UploadGate open={!!gate} question={gate?.question} onSubmit={submitGate} onCancel={cancelGate} />
 
       {/* 上传区域 */}
       {!videoUrl && (
