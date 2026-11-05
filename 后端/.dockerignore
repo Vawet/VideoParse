@@ -1,0 +1,9 @@
+.env
+**/__pycache__
+**/.pytest_cache
+app/uploads
+app/frames
+app/audio
+app/outputs
+app/data
+app/tests

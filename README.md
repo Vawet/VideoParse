@@ -191,6 +191,7 @@ my-react-app/
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///app/data/videoparse.db` | 生产可用 Postgres（`postgresql+psycopg2://...`）；表结构由 SQLAlchemy 自动创建 |
+| `DATA_ROOT` | `后端/app/` | 运行产物（uploads/frames/audio/outputs/data）的根目录；容器部署时指向持久卷，如 `/data` |
 | `ANALYZE_MODE` | `pipeline` | `pipeline`：确定性流水线，Agent 仅在出问题时修复；`agent`：完全由 Agent 决策 |
 | `CHAT_HISTORY_CHAR_BUDGET` | `12000` | 问答送进模型的历史字符预算；最近一轮超预算时仍整段保留 |
 | `DEDUPE_BACKEND` | `auto` | 关键帧去重：`auto`/`clip`/`hash`；CLIP 不可用时自动回退结构哈希 |

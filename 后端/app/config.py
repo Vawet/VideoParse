@@ -8,14 +8,16 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
-FRAMES_FOLDER = os.path.join(BASE_DIR, "frames")
-AUDIO_FOLDER = os.path.join(BASE_DIR, "audio")
-OUTPUT_FOLDER = os.path.join(BASE_DIR, "outputs")
+# 运行产物根目录：部署时设置 DATA_ROOT 指向持久卷（如 /data），默认仍在 app/ 下
+DATA_ROOT = os.path.abspath(os.getenv("DATA_ROOT") or BASE_DIR)
+UPLOAD_FOLDER = os.path.join(DATA_ROOT, "uploads")
+FRAMES_FOLDER = os.path.join(DATA_ROOT, "frames")
+AUDIO_FOLDER = os.path.join(DATA_ROOT, "audio")
+OUTPUT_FOLDER = os.path.join(DATA_ROOT, "outputs")
 ALLOWED_EXTENSIONS = {"mp4", "mov", "avi", "mkv", "flv"}
 MAX_CONTENT_LENGTH = 100 * 1024 * 1024
 
-DATA_FOLDER = os.path.join(BASE_DIR, "data")
+DATA_FOLDER = os.path.join(DATA_ROOT, "data")
 # 数据库：开发/测试默认 SQLite；正式部署设置 DATABASE_URL=postgresql+psycopg://user:pass@host/db
 DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{os.path.join(DATA_FOLDER, 'videoparse.db')}"
 
