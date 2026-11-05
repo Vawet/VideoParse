@@ -23,13 +23,24 @@ def summarize(rows: List[dict]) -> dict:
     ans = [r for r in rows if r["answerable"]]
     unans = [r for r in rows if not r["answerable"]]
     rate = lambda xs, k: round(sum(1 for x in xs if x[k]) / len(xs), 3) if xs else None  # noqa: E731
-    return {
+    out = {
         "n_answerable": len(ans), "n_unanswerable": len(unans),
         "citation_pass_rate": rate(ans, "citation_ok"),   # 有可核对时间戳依据的回答占比
         "hit_rate": rate(ans, "hit"),                      # 引用落在正确位置的占比
         "refusal_rate": rate(unans, "refused"),            # 没依据时正确拒答的占比
         "bad_citation_total": sum(r["bad_citations"] for r in rows),
     }
+    if _mean(rows, "steps") is not None:
+        out["mean_steps"] = _mean(rows, "steps")
+        out["mean_tool_calls"] = _mean(rows, "tool_calls")
+        out["repeated_tool_calls"] = sum(r["repeated_tool_calls"] for r in rows)
+    return out
+
+
+def _mean(rows, key):
+    if not rows or any(key not in r for r in rows):
+        return None
+    return round(sum(r[key] for r in rows) / len(rows), 2)
 
 
 def quiz_stats(res: dict, requested: int) -> dict:

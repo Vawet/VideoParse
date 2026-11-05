@@ -48,5 +48,19 @@ def test_metrics_with_scripted_answers(learn_env, monkeypatch):
     assert s["bad_citation_total"] >= 1
 
 
+def test_summarize_includes_loop_stats_when_present():
+    rows = [
+        {"answerable": True, "citation_ok": True, "hit": True, "bad_citations": 0,
+         "steps": 4, "tool_calls": 2, "repeated_tool_calls": 1},
+        {"answerable": True, "citation_ok": False, "hit": False, "bad_citations": 1,
+         "steps": 2, "tool_calls": 1, "repeated_tool_calls": 0},
+    ]
+    s = metrics.summarize(rows)
+    assert s["citation_pass_rate"] == 0.5
+    assert s["mean_steps"] == 3
+    assert s["mean_tool_calls"] == 1.5
+    assert s["repeated_tool_calls"] == 1
+
+
 def test_quiz_stats():
     assert metrics.quiz_stats({"questions": [1, 2, 3], "rejected": 2, "rounds": 2}, 5)["accept_rate"] == 0.6

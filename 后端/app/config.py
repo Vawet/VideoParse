@@ -81,6 +81,8 @@ AGENT_MODEL = os.getenv("AGENT_MODEL", _P["agent"])    # Agent 决策（需支�
 TEXT_MODEL = os.getenv("TEXT_MODEL", _P["text"])       # 文本任务
 VISION_MODEL = os.getenv("VISION_MODEL", _P["vision"]) # 看图（需支持图像理解）
 AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "25"))
+# 问答拼进模型的历史字符预算。最近一轮超预算时仍整段保留。
+CHAT_HISTORY_CHAR_BUDGET = int(os.getenv("CHAT_HISTORY_CHAR_BUDGET", "12000"))
 # 解析模式：pipeline(默认，确定性流水线 + 异常时 Agent 兜底) | agent(全程由 Agent 自主规划)
 ANALYZE_MODE = os.getenv("ANALYZE_MODE", "pipeline")
 DEFAULT_PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:5000")

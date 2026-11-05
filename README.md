@@ -71,7 +71,7 @@ DEEPSEEK_API_KEY=sk-xxx
 LLM_PROVIDER=deepseek   # 只配了 DeepSeek key 时可省略；两个 key 都配时需显式指定
 ```
 
-其他可选环境变量：`AGENT_MODEL`、`TEXT_MODEL`、`VISION_MODEL`、`LLM_BASE_URL`、`WHISPER_MODEL`、`PUBLIC_BASE_URL`、`AGENT_MAX_STEPS`。
+其他可选环境变量：`AGENT_MODEL`、`TEXT_MODEL`、`VISION_MODEL`、`LLM_BASE_URL`、`WHISPER_MODEL`、`PUBLIC_BASE_URL`、`AGENT_MAX_STEPS`、`CHAT_HISTORY_CHAR_BUDGET`。
 
 检索：默认 `RETRIEVER=hybrid`，即 BM25 + 本地向量（`EMBED_MODEL`，默认 `BAAI/bge-small-zh-v1.5`，首次使用自动下载约 100MB）的 RRF 混合检索（设 `RETRIEVER=bm25` 可改回纯 BM25），模型不可用时自动降级为 BM25。对比评测：`cd 后端 && ./.venv/bin/python -m app.tests.eval.retrieval_eval`。
 
@@ -192,6 +192,7 @@ my-react-app/
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///app/data/videoparse.db` | 生产可用 Postgres（`postgresql+psycopg2://...`）；表结构由 SQLAlchemy 自动创建 |
 | `ANALYZE_MODE` | `pipeline` | `pipeline`：确定性流水线，Agent 仅在出问题时修复；`agent`：完全由 Agent 决策 |
+| `CHAT_HISTORY_CHAR_BUDGET` | `12000` | 问答送进模型的历史字符预算；最近一轮超预算时仍整段保留 |
 | `DEDUPE_BACKEND` | `auto` | 关键帧去重：`auto`/`clip`/`hash`；CLIP 不可用时自动回退结构哈希 |
 | `HASH_SIMILARITY_THRESHOLD` | `0.9` | 结构哈希去重阈值 |
 | `CLIP_LOAD_TIMEOUT` | `90` | CLIP 模型加载超时（秒） |

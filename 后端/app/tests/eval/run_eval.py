@@ -1,5 +1,5 @@
 """用真实模型跑评测：  cd 后端 && ./.venv/bin/python -m app.tests.eval.run_eval
-输出：引用通过率 / 命中率 / 拒答率 / 出题通过率 / token 与耗时。不会碰你的真实数据库和上传目录。"""
+输出：引用通过率 / 命中率 / 拒答率 / 出题通过率 / 平均步数 / 重复工具调用 / token 与耗时。不会碰你的真实数据库和上传目录。"""
 import json
 import os
 import tempfile
@@ -55,6 +55,7 @@ def main():
     for item in gold["questions"]:
         answer, _, cites = loop.chat_with_video(ws, [], item["q"])
         row = metrics.score_answer(item, answer, cites)
+        row.update(loop.last_chat_stats or {"steps": 0, "tool_calls": 0, "repeated_tool_calls": 0})
         rows.append(row)
         print(("✓" if row.get("hit") or row.get("refused") else "✗"), item["q"], "→", answer[:60].replace("\n", " "))
     chat = metrics.summarize(rows)

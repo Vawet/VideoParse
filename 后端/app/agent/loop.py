@@ -1,4 +1,6 @@
 """基于 DashScope(OpenAI 兼容) function calling 的 Agent 循环。"""
+import contextlib
+import contextvars
 import json
 import logging
 import os
@@ -11,6 +13,30 @@ from app.services import media
 
 log = logging.getLogger(__name__)
 
+# 问答循环的控制只加在 chat / course。解析仍按既定工具顺序走，允许同一工具重试。
+_CHAT_GROUPS = ("chat", "course")
+_TOOL_RESULTS_KEPT = 2
+_TOOL_OMITTED = "[已省略较早的工具结果，需要时请换参数重新调用]"
+_chat_stats = contextvars.ContextVar("chat_stats", default=None)
+last_chat_stats = None
+
+
+class _ChatStats:
+    def __init__(self):
+        self.steps = self.tool_calls = self.repeated_tool_calls = 0
+
+    def to_dict(self):
+        return {"steps": self.steps, "tool_calls": self.tool_calls,
+                "repeated_tool_calls": self.repeated_tool_calls}
+
+
+class AgentStepLimit(RuntimeError):
+    """步数用尽。解析路径仍抛出，由 analyze_video 收尾；问答路径改成带标注的部分回答。"""
+
+    def __init__(self, max_steps):
+        self.max_steps = max_steps
+        super().__init__(f"Agent 超过最大步数({max_steps})仍未结束")
+
 
 def _assistant_dict(msg):
     d = {"role": "assistant", "content": msg.content or ""}
@@ -22,20 +48,91 @@ def _assistant_dict(msg):
     return d
 
 
+def _call_key(name, args):
+    if not isinstance(args, dict):
+        return None
+    return name + "\n" + json.dumps(args, ensure_ascii=False, sort_keys=True)
+
+
+def _latest_user_question(messages):
+    for m in reversed(messages):
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            return m["content"]
+    return ""
+
+
+def _compact_tool_results(messages, keep=_TOOL_RESULTS_KEPT):
+    """只保留最近几条工具结果原文，更早的换成占位。工具结果可以重新调用得到。"""
+    idxs = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
+    for i in idxs[:-keep] if keep else idxs:
+        if messages[i].get("content") != _TOOL_OMITTED:
+            messages[i]["content"] = _TOOL_OMITTED
+
+
+def _place_question(messages, reminders, question, force=False):
+    """原问题只留一份在上下文末尾，避免被工具结果淹没。上一份提醒先去掉。"""
+    for m in reminders:
+        if m in messages:
+            messages.remove(m)
+    reminders.clear()
+    if not question:
+        return
+    if force:
+        content = f"原问题：{question}\n相同工具和参数已经调用过。请根据已有结果直接回答，不要再调用工具。"
+    else:
+        content = f"原问题：{question}\n若已有足够依据，请直接回答；不要用相同参数重复调用工具。"
+    msg = {"role": "user", "content": content}
+    reminders.append(msg)
+    messages.append(msg)
+
+
+def _complete(client, messages, tool_schemas, with_tools):
+    kwargs = {"model": config.AGENT_MODEL, "messages": messages, "stream": False, "extra_body": config.extra_body()}
+    if with_tools:
+        kwargs["tools"] = tool_schemas
+    return client.chat.completions.create(**kwargs)
+
+
+def _note_stats(steps=0, tool_calls=0, repeated=0):
+    stats = _chat_stats.get()
+    if stats is None:
+        return
+    stats.steps += steps
+    stats.tool_calls += tool_calls
+    stats.repeated_tool_calls += repeated
+
+
 def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=None, stop_tool=None):
     """运行 Agent 循环，直到模型不再调用工具 / 调用了 stop_tool / 达到最大步数。
 
     messages 会被原地追加（便于聊天场景保留多轮历史）。返回最终文本回复。
+    问答（chat / course）额外做三件事：相同工具和参数不执行第二次，并要求直接作答；
+    每一步把原问题放回末尾；只保留最近两条工具结果。
     """
     max_steps = max_steps or config.AGENT_MAX_STEPS
     client = config.get_client()
     tool_schemas = tools.schemas(group)
+    guard = group in _CHAT_GROUPS
+    question = _latest_user_question(messages) if guard else ""
+    reminders, seen = [], set()
+
+    def force_answer():
+        _place_question(messages, reminders, question, force=True)
+        completion = _complete(client, messages, tool_schemas, with_tools=False)
+        _note_stats(steps=1)
+        msg = completion.choices[0].message
+        messages.append(_assistant_dict(msg))
+        if msg.content:
+            emit({"type": "thought", "step": max_steps, "text": msg.content})
+        return (msg.content or "").strip()
 
     for step in range(1, max_steps + 1):
-        completion = client.chat.completions.create(
-            model=config.AGENT_MODEL, messages=messages, tools=tool_schemas, stream=False,
-            extra_body=config.extra_body(),
-        )
+        if guard:
+            _compact_tool_results(messages)
+            if any(m.get("role") == "tool" for m in messages):
+                _place_question(messages, reminders, question)
+        completion = _complete(client, messages, tool_schemas, with_tools=True)
+        _note_stats(steps=1)
         msg = completion.choices[0].message
         messages.append(_assistant_dict(msg))
         if msg.content:
@@ -44,30 +141,45 @@ def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=Non
         if not msg.tool_calls:
             return msg.content or ""
 
-        stop = False
+        stop = repeated = False
         for call in msg.tool_calls:
             name = call.function.name
             try:
                 args = json.loads(call.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = None
-            if args is None:
+            key = _call_key(name, args) if guard else None
+            if key and key in seen:
+                repeated = True
+                _note_stats(repeated=1)
+                observation = {"skipped": True, "reason": "相同工具和参数已经调用过，请根据已有结果直接回答。"}
+                emit({"type": "tool_start", "step": step, "tool": name, "args": args})
+                emit({"type": "tool_end", "step": step, "tool": name, "ok": False, "observation": observation})
+            elif args is None:
                 observation = {"error": "工具参数不是合法 JSON，请重新生成"}
             else:
+                if key:
+                    seen.add(key)
                 emit({"type": "tool_start", "step": step, "tool": name, "args": args})
                 observation = tools.run_tool(name, ws, args, group)
+                _note_stats(tool_calls=1)
                 emit({"type": "tool_end", "step": step, "tool": name,
                       "ok": "error" not in observation, "observation": observation})
             messages.append({
                 "role": "tool", "tool_call_id": call.id,
                 "content": json.dumps(observation, ensure_ascii=False),
             })
-            if name == stop_tool and "error" not in observation:
+            if name == stop_tool and "error" not in observation and not observation.get("skipped"):
                 stop = True
+        if repeated:
+            text = force_answer()
+            if text:
+                return text
+            return _partial_answer(messages, reason="相同工具和参数重复，已提前停止")
         if stop:
             return "已完成"
 
-    raise RuntimeError(f"Agent 超过最大步数({max_steps})仍未结束")
+    raise AgentStepLimit(max_steps)
 
 
 def analyze_video(ws: Workspace, emit=lambda e: None, mode=None):
@@ -137,31 +249,118 @@ def extract_citations(answer: str, segments):
     return out
 
 
+def fit_history(history, budget=None):
+    """按轮次从新到旧保留历史，直到字符预算。
+
+    一轮从一条 user 消息起，到下一条 user 之前。最近一轮即使超预算也整段保留，不从句子中间切开。
+    当前问题由调用方另附，不在这里裁。
+    """
+    budget = config.CHAT_HISTORY_CHAR_BUDGET if budget is None else budget
+    msgs = [m for m in history or []
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
+    if not msgs:
+        return []
+    rounds, cur = [], []
+    for m in msgs:
+        if m["role"] == "user" and cur:
+            rounds.append(cur)
+            cur = []
+        cur.append(m)
+    rounds.append(cur)
+
+    def nchars(rnd):
+        return sum(len(m["content"]) for m in rnd)
+
+    kept = [rounds[-1]]
+    used = nchars(rounds[-1])
+    limit = max(0, budget)
+    for rnd in reversed(rounds[:-1]):
+        n = nchars(rnd)
+        if used + n > limit:
+            break
+        kept.append(rnd)
+        used += n
+    kept.reverse()
+    return [m for rnd in kept for m in rnd]
+
+
+def _partial_answer(messages, max_steps=None, reason="已达到步数上限"):
+    """取最后一段助手正文；没有正文则说明停在哪个工具。"""
+    last_text, last_tool = "", ""
+    for m in messages:
+        if m.get("role") != "assistant":
+            continue
+        content = m.get("content")
+        if isinstance(content, str) and content.strip():
+            last_text = content.strip()
+        for call in m.get("tool_calls") or []:
+            name = ((call.get("function") or {}).get("name")) or ""
+            if name:
+                last_tool = name
+    if reason == "已达到步数上限":
+        note = f"已达到步数上限 {max_steps}"
+        stopped = f"已达到步数上限（{max_steps}）"
+    else:
+        note = stopped = reason
+    if last_text:
+        return f"{last_text}\n\n（{note}，以上内容可能不完整。）"
+    if last_tool:
+        return f"{stopped}，停在工具 {last_tool}，尚未形成回答。"
+    return f"{stopped}，尚未形成回答。"
+
+
+def _run_chat(group, ws, messages, emit, max_steps):
+    try:
+        return run_agent(group, ws, messages, emit, max_steps=max_steps)
+    except AgentStepLimit as e:
+        log.warning("问答达到步数上限: %s", e)
+        return _partial_answer(messages, e.max_steps)
+
+
+def _chat_messages(system, history, question):
+    messages = [{"role": "system", "content": system}]
+    messages += fit_history(history)
+    messages.append({"role": "user", "content": question})
+    return messages
+
+
+@contextlib.contextmanager
+def _collect_chat_stats():
+    stats = _ChatStats()
+    token = _chat_stats.set(stats)
+    try:
+        yield
+    finally:
+        global last_chat_stats
+        last_chat_stats = stats.to_dict()
+        _chat_stats.reset(token)
+
+
 def chat_with_video(ws: Workspace, history, question, emit=lambda e: None, client_id=None):
     """视频问答。返回 (answer, new_history, citations)。
-    代码保证：答案要么带有效时间戳，要么明确“视频中未提及”；否则追问一次让模型补依据。"""
-    ws.client_id = client_id
-    messages = [{"role": "system", "content": prompts.CHAT_SYSTEM_PROMPT}]
-    messages += [m for m in history if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
-    messages.append({"role": "user", "content": question})
-    answer = run_agent("chat", ws, messages, emit, max_steps=8)
+    代码保证：答案要么带有效时间戳，要么明确“视频中未提及”；否则追问一次让模型补依据。
+    步数用尽时返回已有正文并标注，不把整次问答变成失败。"""
+    with _collect_chat_stats():
+        ws.client_id = client_id
+        messages = _chat_messages(prompts.CHAT_SYSTEM_PROMPT, history, question)
+        answer = _run_chat("chat", ws, messages, emit, max_steps=8)
 
-    try:
-        segments = tools._segments(ws)
-    except Exception:  # noqa: BLE001
-        segments = []
-    citations = extract_citations(answer, segments)
-    if segments and NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
-        messages.append({"role": "assistant", "content": answer})
-        messages.append({"role": "user", "content": (
-            "你的回答缺少有效的字幕时间戳依据。请用 search_transcript / get_transcript_window 找到依据，"
-            "在每条结论后标注 [mm:ss]；如果字幕确实没有依据，请直接回答“视频中未提及”。")})
-        answer = run_agent("chat", ws, messages, emit, max_steps=6)
+        try:
+            segments = tools._segments(ws)
+        except Exception:  # noqa: BLE001
+            segments = []
         citations = extract_citations(answer, segments)
+        if segments and NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
+            messages.append({"role": "assistant", "content": answer})
+            messages.append({"role": "user", "content": (
+                "你的回答缺少有效的字幕时间戳依据。请用 search_transcript / get_transcript_window 找到依据，"
+                "在每条结论后标注 [mm:ss]；如果字幕确实没有依据，请直接回答“视频中未提及”。")})
+            answer = _run_chat("chat", ws, messages, emit, max_steps=6)
+            citations = extract_citations(answer, segments)
 
-    new_history = [m for m in history if m.get("role") in ("user", "assistant")]
-    new_history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
-    return answer, new_history, citations
+        new_history = [m for m in history if m.get("role") in ("user", "assistant")]
+        new_history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+        return answer, new_history, citations
 
 
 # ------------------------------------------------------------------ 整门课问答
@@ -201,18 +400,17 @@ def chat_with_course(course_id, history, question, emit=lambda e: None, client_i
     ws = CourseWorkspace(course_id)
     ws.client_id = client_id
     videos = [{"id": v["id"], "title": v["title"], "segments": repo.get_transcript(v["id"])} for v in course["videos"]]
-    messages = [{"role": "system", "content": prompts.COURSE_CHAT_SYSTEM_PROMPT}]
-    messages += [m for m in history if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
-    messages.append({"role": "user", "content": question})
-    answer = run_agent("course", ws, messages, emit, max_steps=8)
-    citations = extract_course_citations(answer, videos)
-    if videos and COURSE_NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
-        messages.append({"role": "assistant", "content": answer})
-        messages.append({"role": "user", "content": (
-            "你的回答缺少有效的出处。请用 search_course / get_video_window 找到依据，在每条结论后标注 [视频标题 mm:ss]；"
-            "确实没有依据就直接回答“课程中未提及”。")})
-        answer = run_agent("course", ws, messages, emit, max_steps=6)
+    with _collect_chat_stats():
+        messages = _chat_messages(prompts.COURSE_CHAT_SYSTEM_PROMPT, history, question)
+        answer = _run_chat("course", ws, messages, emit, max_steps=8)
         citations = extract_course_citations(answer, videos)
-    new_history = [m for m in history if m.get("role") in ("user", "assistant")]
-    new_history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
-    return answer, new_history, citations
+        if videos and COURSE_NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
+            messages.append({"role": "assistant", "content": answer})
+            messages.append({"role": "user", "content": (
+                "你的回答缺少有效的出处。请用 search_course / get_video_window 找到依据，在每条结论后标注 [视频标题 mm:ss]；"
+                "确实没有依据就直接回答“课程中未提及”。")})
+            answer = _run_chat("course", ws, messages, emit, max_steps=6)
+            citations = extract_course_citations(answer, videos)
+        new_history = [m for m in history if m.get("role") in ("user", "assistant")]
+        new_history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+        return answer, new_history, citations

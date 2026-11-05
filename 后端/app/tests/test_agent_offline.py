@@ -34,15 +34,19 @@ class FakeClient:
     """按脚本依次返回：每个元素是 (name, args) 列表（一轮工具调用）或字符串（最终回复）。"""
 
     def __init__(self, script):
-        self.script, self.i, self.seen = list(script), 0, []
+        self.script, self.i, self.seen, self.seen_messages = list(script), 0, [], []
         self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=self._create))
 
     def _create(self, model, messages, tools=None, **kw):
         self.seen.append([m["role"] for m in messages])
+        self.seen_messages.append([{k: v for k, v in m.items()} for m in messages])
         step = self.script[self.i]
         self.i += 1
         if isinstance(step, str):
             msg = _Msg(content=step)
+        elif isinstance(step, dict):
+            calls = [_Call(f"{self.i}_{n}", name, args) for n, (name, args) in enumerate(step.get("calls") or [])]
+            msg = _Msg(content=step.get("content"), calls=calls or None)
         else:
             msg = _Msg(calls=[_Call(f"{self.i}_{n}", name, args) for n, (name, args) in enumerate(step)])
         return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
@@ -267,6 +271,125 @@ def test_agent_max_steps_guard(env, monkeypatch):
     ws = Workspace(env.video_id)
     with pytest.raises(RuntimeError):
         loop.run_agent("analyze", ws, [{"role": "user", "content": "x"}], max_steps=3)
+
+
+def test_fit_history_keeps_newest_round_within_budget():
+    from app.agent.loop import fit_history
+
+    history = []
+    for i in range(4):
+        history.append({"role": "user", "content": f"q{i}" + "x" * 100})
+        history.append({"role": "assistant", "content": f"a{i}" + "y" * 100})
+    fitted = fit_history(history, budget=500)
+    assert fitted[0]["content"].startswith("q2")
+    assert fitted[-1]["content"].startswith("a3")
+    assert all(not m["content"].startswith("q0") for m in fitted)
+
+    huge = [
+        {"role": "user", "content": "old"},
+        {"role": "assistant", "content": "drop"},
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": "z" * 1000},
+        {"role": "system", "content": "ignore"},
+    ]
+    fitted = fit_history(huge, budget=10)
+    assert [m["content"][:1] for m in fitted] == ["q", "z"]
+
+
+def test_chat_sends_trimmed_history_but_returns_full(env, monkeypatch):
+    from app.agent import loop
+    from app.agent.state import Workspace
+
+    seen = []
+
+    def fake(group, ws, messages, emit, max_steps=0):
+        seen.append(messages)
+        return "视频中未提及"
+
+    monkeypatch.setattr(loop, "run_agent", fake)
+    monkeypatch.setattr(config, "CHAT_HISTORY_CHAR_BUDGET", 180)
+    history = []
+    for i in range(3):
+        history += [
+            {"role": "user", "content": f"u{i}" + "a" * 50},
+            {"role": "assistant", "content": f"b{i}" + "c" * 50},
+        ]
+    answer, new_history, _ = loop.chat_with_video(Workspace(env.video_id), history, "现在问")
+    sent = [m["content"] for m in seen[0] if m["role"] != "system"]
+    assert sent[0].startswith("u2") and sent[-1] == "现在问"
+    assert all(not c.startswith("u0") for c in sent)
+    assert answer == "视频中未提及"
+    assert new_history[0]["content"].startswith("u0")
+    assert new_history[-2:] == [{"role": "user", "content": "现在问"},
+                                {"role": "assistant", "content": answer}]
+
+
+def test_chat_returns_partial_when_steps_exhausted(env, monkeypatch):
+    from app.agent import loop, tools
+    from app.agent.state import Workspace
+
+    ws = Workspace(env.video_id)
+    tools.run_tool("transcribe", ws, {}, "analyze")
+    _use_client(monkeypatch, [[("search_transcript", {"query": f"q{i}"})] for i in range(14)])
+    answer, history, cites = loop.chat_with_video(ws, [], "注意力机制在哪讲的？")
+    assert "步数上限" in answer and "search_transcript" in answer
+    assert cites == []
+    assert history[-1]["content"] == answer
+    assert loop.last_chat_stats == {"steps": 14, "tool_calls": 14, "repeated_tool_calls": 0}
+
+
+def test_chat_stops_when_same_tool_call_repeats(env, monkeypatch):
+    from app.agent import loop, tools
+    from app.agent.state import Workspace
+
+    ws = Workspace(env.video_id)
+    tools.run_tool("transcribe", ws, {}, "analyze")
+    _use_client(monkeypatch, [
+        [("search_transcript", {"query": "注意力"})],
+        [("search_transcript", {"query": "注意力"})],
+        "在 00:10 讲到注意力机制。",
+    ])
+    answer, _, cites = loop.chat_with_video(ws, [], "注意力机制在哪讲的？")
+    assert "00:10" in answer and cites and cites[0]["valid"]
+    assert loop.last_chat_stats == {"steps": 3, "tool_calls": 1, "repeated_tool_calls": 1}
+
+
+def test_chat_restates_question_and_omits_old_tool_results(env, monkeypatch):
+    from app.agent import loop, tools
+    from app.agent.state import Workspace
+
+    ws = Workspace(env.video_id)
+    tools.run_tool("transcribe", ws, {}, "analyze")
+    question = "注意力机制在哪讲的？"
+    client = _use_client(monkeypatch, [
+        [("search_transcript", {"query": "q0"})],
+        [("search_transcript", {"query": "q1"})],
+        [("search_transcript", {"query": "q2"})],
+        "在 00:10 讲到注意力机制。",
+    ])
+    answer, _, cites = loop.chat_with_video(ws, [], question)
+    assert "00:10" in answer and cites[0]["valid"]
+    second = client.seen_messages[1]
+    assert second[-1]["role"] == "user" and question in second[-1]["content"]
+    fourth = client.seen_messages[3]
+    tool_contents = [m["content"] for m in fourth if m["role"] == "tool"]
+    assert tool_contents[0] == loop._TOOL_OMITTED
+    assert tool_contents[-1] != loop._TOOL_OMITTED
+    assert fourth[-1]["role"] == "user" and question in fourth[-1]["content"]
+
+
+def test_run_chat_keeps_last_text_when_steps_exhausted(env, monkeypatch):
+    from app.agent import loop
+    from app.agent.state import Workspace
+
+    _use_client(monkeypatch, [
+        {"content": "注意力在后半段", "calls": [("search_transcript", {"query": "注意力"})]},
+        [("search_transcript", {"query": "机制"})],
+    ])
+    answer = loop._run_chat("chat", Workspace(env.video_id), [{"role": "user", "content": "在哪"}],
+                            lambda e: None, max_steps=2)
+    assert answer.startswith("注意力在后半段")
+    assert "步数上限 2" in answer
 
 
 # ------------------------------------------------------------------ HTTP 层
