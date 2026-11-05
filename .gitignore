@@ -12,4 +12,4 @@ __pycache__/
 !.harness/runs/.gitkeep
 
 后端/dsh_runtime/node_modules/
-前端/my-react-app/dist/
+前端/workspace/dist/

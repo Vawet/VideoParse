@@ -21,7 +21,7 @@ sleep 3
 # 启动前端
 echo ""
 echo "🌐 启动前端服务..."
-cd "$PROJECT_DIR/前端/my-react-app"
+cd "$PROJECT_DIR/前端/workspace"
 
 if [ ! -d "node_modules" ]; then
   echo "📦 安装前端依赖..."
@@ -29,7 +29,7 @@ if [ ! -d "node_modules" ]; then
 fi
 
 echo "✅ 前端启动中 - http://localhost:8080"
-npm start
+npm run dev
 
 # 当前端退出时，也停止后端
 echo ""

@@ -2,7 +2,7 @@
 
 echo "🚀 启动前端服务..."
 
-cd "$(dirname "$0")/前端/my-react-app"
+cd "$(dirname "$0")/前端/workspace"
 
 if [ ! -d "node_modules" ]; then
   echo "📦 首次运行，安装 npm 依赖..."
@@ -10,4 +10,4 @@ if [ ! -d "node_modules" ]; then
 fi
 
 echo "▶️  启动 React 开发服务器 (http://localhost:8080)..."
-npm start
+npm run dev

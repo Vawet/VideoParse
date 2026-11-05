@@ -1,0 +1,311 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* VideoParse — warm cinematic dark (default), lime action + gold time accent */
+  :root {
+    --background: 60 6% 5%;
+    --foreground: 45 24% 93%;
+
+    --card: 60 5% 8%;
+    --card-foreground: 45 24% 93%;
+
+    --popover: 60 5% 9%;
+    --popover-foreground: 45 24% 93%;
+
+    --primary: 74 90% 62%;
+    --primary-foreground: 60 25% 6%;
+
+    --secondary: 60 5% 13%;
+    --secondary-foreground: 45 20% 88%;
+
+    --muted: 60 4% 12%;
+    --muted-foreground: 45 9% 63%;
+
+    --accent: 60 5% 16%;
+    --accent-foreground: 45 24% 94%;
+
+    --destructive: 8 74% 62%;
+    --destructive-foreground: 8 40% 8%;
+
+    --success: 150 56% 52%;
+    --success-foreground: 150 60% 8%;
+
+    --warning: 38 88% 62%;
+    --warning-foreground: 40 90% 8%;
+
+    --border: 48 8% 18%;
+    --input: 48 8% 22%;
+    --ring: 74 90% 62%;
+
+    --radius: 0.75rem;
+
+    /* gold: reserved for time references, numerals and editorial emphasis */
+    --gold: 43 62% 62%;
+    --gold-soft: 43 40% 15%;
+    --gold-soft-foreground: 43 76% 74%;
+
+    --primary-soft: 74 38% 15%;
+    --primary-soft-foreground: 74 84% 72%;
+    --destructive-soft: 8 42% 16%;
+    --destructive-soft-foreground: 8 82% 76%;
+    --success-soft: 150 32% 14%;
+    --success-soft-foreground: 150 58% 70%;
+    --warning-soft: 38 38% 15%;
+    --warning-soft-foreground: 38 86% 74%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(74 90% 62%), hsl(68 82% 53%));
+    --gradient-surface: linear-gradient(180deg, hsl(60 5% 8%), hsl(60 6% 5%));
+    --gradient-stage: linear-gradient(150deg, hsl(32 10% 11%), hsl(60 6% 4%));
+    --gradient-hero: radial-gradient(70% 60% at 72% -10%, hsl(36 68% 34% / 0.42), transparent 68%),
+      radial-gradient(48% 46% at 8% 4%, hsl(74 78% 42% / 0.16), transparent 70%);
+
+    --shadow-soft: 0 1px 0 hsl(0 0% 100% / 0.03) inset, 0 18px 40px -28px hsl(0 0% 0% / 0.9);
+    --shadow-elevated: 0 24px 60px -30px hsl(0 0% 0% / 0.95);
+    --shadow-glow: 0 0 0 4px hsl(74 90% 62% / 0.16);
+    --transition-smooth: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 60 5% 7%;
+    --sidebar-foreground: 45 20% 88%;
+    --sidebar-primary: 74 90% 62%;
+    --sidebar-primary-foreground: 60 25% 6%;
+    --sidebar-accent: 60 5% 14%;
+    --sidebar-accent-foreground: 45 24% 94%;
+    --sidebar-border: 48 8% 18%;
+    --sidebar-ring: 74 90% 62%;
+  }
+
+  /* Light = warm paper with ink, olive action and antique gold */
+  .light {
+    --background: 42 38% 97%;
+    --foreground: 30 16% 12%;
+
+    --card: 40 48% 99%;
+    --card-foreground: 30 16% 12%;
+
+    --popover: 40 48% 99%;
+    --popover-foreground: 30 16% 12%;
+
+    --primary: 80 52% 25%;
+    --primary-foreground: 42 44% 97%;
+
+    --secondary: 40 24% 93%;
+    --secondary-foreground: 30 14% 18%;
+
+    --muted: 40 28% 94%;
+    --muted-foreground: 32 11% 37%;
+
+    --accent: 42 32% 92%;
+    --accent-foreground: 30 16% 14%;
+
+    --destructive: 8 68% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 54% 28%;
+    --success-foreground: 150 40% 98%;
+
+    --warning: 32 82% 36%;
+    --warning-foreground: 40 100% 98%;
+
+    --border: 38 18% 86%;
+    --input: 38 18% 82%;
+    --ring: 80 52% 30%;
+
+    --gold: 36 64% 33%;
+    --gold-soft: 40 62% 92%;
+    --gold-soft-foreground: 34 72% 26%;
+
+    --primary-soft: 78 44% 90%;
+    --primary-soft-foreground: 80 58% 22%;
+    --destructive-soft: 8 72% 96%;
+    --destructive-soft-foreground: 8 70% 34%;
+    --success-soft: 152 44% 94%;
+    --success-soft-foreground: 152 60% 24%;
+    --warning-soft: 38 86% 94%;
+    --warning-soft-foreground: 32 84% 30%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(80 52% 23%), hsl(82 40% 34%));
+    --gradient-surface: linear-gradient(180deg, hsl(40 48% 99%), hsl(42 34% 96%));
+    --gradient-stage: linear-gradient(150deg, hsl(35 26% 88%), hsl(42 32% 95%));
+    --gradient-hero: radial-gradient(62% 55% at 74% -8%, hsl(38 82% 74% / 0.55), transparent 70%),
+      radial-gradient(46% 44% at 6% 2%, hsl(76 68% 72% / 0.3), transparent 72%);
+
+    --shadow-soft: 0 1px 2px hsl(30 20% 20% / 0.04), 0 16px 36px -26px hsl(30 20% 20% / 0.35);
+    --shadow-elevated: 0 22px 50px -30px hsl(30 20% 20% / 0.45);
+    --shadow-glow: 0 0 0 4px hsl(80 52% 30% / 0.14);
+
+    --sidebar-background: 40 40% 98%;
+    --sidebar-foreground: 30 14% 20%;
+    --sidebar-primary: 80 52% 25%;
+    --sidebar-primary-foreground: 42 44% 97%;
+    --sidebar-accent: 42 30% 93%;
+    --sidebar-accent-foreground: 30 16% 14%;
+    --sidebar-border: 38 18% 86%;
+    --sidebar-ring: 80 52% 30%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+
+  /* Consistent, visible keyboard focus everywhere */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.28);
+  }
+}
+
+@layer components {
+  /* Editorial micro-label: the numbered, letter-spaced captions of the reference */
+  .label-mono {
+    @apply font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground;
+  }
+
+  /* Serif display for headings, numerals and the italic accent words */
+  .display {
+    font-family: Georgia, "Songti SC", "Noto Serif SC", "Source Han Serif SC", "Times New Roman",
+      serif;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .display-italic {
+    @apply display italic;
+  }
+
+  /* Corner ticks around media frames, borrowed from the reference layout */
+  .frame-brackets {
+    position: relative;
+  }
+  .frame-brackets::before,
+  .frame-brackets::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-style: solid;
+    border-color: hsl(var(--gold) / 0.5);
+    pointer-events: none;
+  }
+  .frame-brackets::before {
+    top: -1px;
+    left: -1px;
+    border-width: 1px 0 0 1px;
+  }
+  .frame-brackets::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 1px 1px 0;
+  }
+
+  .ambient-glow {
+    background-image: var(--gradient-hero);
+  }
+
+  /* Long-form reading typography for the generated notes, themed in both modes */
+  .prose-vp {
+    --tw-prose-body: hsl(var(--foreground) / 0.9);
+    --tw-prose-headings: hsl(var(--foreground));
+    --tw-prose-lead: hsl(var(--muted-foreground));
+    --tw-prose-links: hsl(var(--primary));
+    --tw-prose-bold: hsl(var(--foreground));
+    --tw-prose-counters: hsl(var(--gold));
+    --tw-prose-bullets: hsl(var(--gold) / 0.55);
+    --tw-prose-hr: hsl(var(--border));
+    --tw-prose-quotes: hsl(var(--foreground) / 0.88);
+    --tw-prose-quote-borders: hsl(var(--gold) / 0.55);
+    --tw-prose-captions: hsl(var(--muted-foreground));
+    --tw-prose-code: hsl(var(--gold-soft-foreground));
+    --tw-prose-th-borders: hsl(var(--border));
+    --tw-prose-td-borders: hsl(var(--border));
+    font-size: 1.0625rem;
+    line-height: 1.78;
+  }
+
+  .prose-vp :where(h2) {
+    scroll-margin-top: 5rem;
+    letter-spacing: -0.01em;
+  }
+
+  .prose-vp :where(blockquote) {
+    font-family: Georgia, "Songti SC", "Noto Serif SC", serif;
+    font-style: italic;
+    font-size: 1.1em;
+  }
+
+  .prose-vp :where(code)::before,
+  .prose-vp :where(code)::after {
+    content: "";
+  }
+
+  /* Thin, unobtrusive scrollbars closer to a reading tool than a browser default */
+  .vp-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .vp-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .vp-scroll::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+  }
+  .vp-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+
+  .vp-stage-grid {
+    background-image: radial-gradient(hsl(var(--gold) / 0.18) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* PDF export: print only the notes article, never the app chrome */
+@media print {
+  body {
+    background: #fff;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .print-notes,
+  .print-notes * {
+    visibility: visible !important;
+  }
+  .print-notes {
+    position: absolute;
+    inset: 0;
+    left: 0;
+    width: 100%;
+    padding: 0;
+    opacity: 1 !important;
+  }
+  .print-notes .no-print {
+    display: none !important;
+  }
+  @page {
+    margin: 16mm;
+  }
+}
