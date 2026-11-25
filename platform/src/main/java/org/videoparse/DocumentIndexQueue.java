@@ -36,4 +36,27 @@ class DocumentIndexQueue {
             """).params(space, task.indexedChunks(), task.failures(), lease, task.id()).update();
         return task;
     }
+
+    void completeBatch(Task task, String lease, int processed) {
+        int next = task.indexedChunks() + processed;
+        db.sql("""
+            UPDATE vp_document SET indexed_chunks=?,index_state=?,failures=0,lease=NULL,due_at=CURRENT_TIMESTAMP(3)
+            WHERE id=? AND lease=?
+            """).params(next, next == task.chunks() ? "ready" : "pending", task.id(), lease).update();
+    }
+
+    void deferBusy(Task task, String lease) {
+        db.sql("""
+            UPDATE vp_document SET index_state='pending',lease=NULL,due_at=TIMESTAMPADD(SECOND,5,CURRENT_TIMESTAMP(3))
+            WHERE id=? AND lease=?
+            """).params(task.id(), lease).update();
+    }
+
+    void recordFailure(Task task, String lease) {
+        int failures = task.failures() + 1;
+        db.sql("""
+            UPDATE vp_document SET failures=?,index_state=?,lease=NULL,due_at=TIMESTAMPADD(SECOND,?,CURRENT_TIMESTAMP(3))
+            WHERE id=? AND lease=?
+            """).params(failures, failures >= 5 ? "error" : "pending", 15 * (1 << failures), task.id(), lease).update();
+    }
 }

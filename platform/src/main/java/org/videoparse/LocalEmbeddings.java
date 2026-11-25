@@ -32,8 +32,12 @@ class LocalEmbeddings {
 
     String modelName() { return modelName; }
 
+    static final class Busy extends IOException {
+        Busy() { super("本地向量模型繁忙"); }
+    }
+
     float[][] embed(List<String> texts, boolean query) throws Exception {
-        if (!lock.tryLock(1, TimeUnit.SECONDS)) throw new IOException("本地向量模型繁忙");
+        if (!lock.tryLock(1, TimeUnit.SECONDS)) throw new Busy();
         try {
             if (retryAfter != 0 && retryAfter - System.nanoTime() > 0) {
                 throw new IOException("本地向量模型暂不可用");

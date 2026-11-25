@@ -28,19 +28,13 @@ class DocumentIndexer {
                 """).params(task.id(),task.indexedChunks()).query(MarkdownSections.Chunk.class).list();
             if (chunks.isEmpty()) throw new IllegalStateException("缺少文档分段");
             vectors.indexDocument(task.ownerId(),task.id(),chunks);
-            int next=task.indexedChunks()+chunks.size();
-            db.sql("""
-                UPDATE vp_document SET indexed_chunks=?,index_state=?,failures=0,lease=NULL,due_at=CURRENT_TIMESTAMP(3)
-                WHERE id=? AND lease=?
-                """).params(next,next==task.chunks()?"ready":"pending",task.id(),lease).update();
+            queue.completeBatch(task, lease, chunks.size());
+        } catch (LocalEmbeddings.Busy busy) {
+            queue.deferBusy(task, lease);
         } catch (Exception e) {
             if (Thread.currentThread().isInterrupted()) return;
-            int failures=task.failures()+1;
-            log.warn("文档向量化失败 {} (第 {} 次): {}",task.id(),failures,e.getClass().getSimpleName());
-            db.sql("""
-                UPDATE vp_document SET failures=?,index_state=?,lease=NULL,due_at=TIMESTAMPADD(SECOND,?,CURRENT_TIMESTAMP(3))
-                WHERE id=? AND lease=?
-                """).params(failures,failures>=5?"error":"pending",15*(1<<failures),task.id(),lease).update();
+            log.warn("文档向量化失败 {} (第 {} 次): {}",task.id(),task.failures()+1,e.getClass().getSimpleName());
+            queue.recordFailure(task, lease);
         }
     }
 }
