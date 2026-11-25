@@ -29,13 +29,33 @@ class DocumentAskController {
         String answer=hits.isEmpty()?"文档中未找到相关依据。":hits.getFirst().body()+" [1]";
         boolean generated=false;
         if (!hits.isEmpty()) {
-            var result=tools.invoke("document_answer",Map.of("question",q,"excerpts",hits.stream().map(DocumentSearch.Passage::body).toList()));
-            var text=new StringJoiner("\n");
-            if (result.getBody()!=null) for(var claim:result.getBody().path("claims"))
-                text.add(claim.path("answer").asText()+" ["+claim.path("id").asInt()+"]");
-            if (text.length()>0) { answer=text.toString(); generated=true; }
+            var synthesis = generate(q, hits);
+            if (synthesis.isPresent()) { answer=synthesis.get(); generated=true; }
         }
         return ResponseEntity.ok(Map.of("success",true,"source","document","answer",answer,
             "generated",generated,"hits",hits,"used_vectors",results.usedVectors()));
+    }
+
+    private Optional<String> generate(String question, List<DocumentSearch.Passage> hits) throws InterruptedException {
+        try {
+            var result = tools.invoke("document_answer", Map.of("question", question,
+                "excerpts", hits.stream().map(DocumentSearch.Passage::body).toList()));
+            var body = result.getBody();
+            if (!result.getStatusCode().is2xxSuccessful() || body == null || !body.path("claims").isArray())
+                return Optional.empty();
+            var answer = new StringJoiner("\n");
+            for (var claim : body.path("claims")) {
+                var id = claim.path("id");
+                var text = claim.path("answer");
+                if (!id.isIntegralNumber() || !id.canConvertToInt() || id.intValue() < 1 || id.intValue() > hits.size()
+                        || !text.isTextual() || text.textValue().isBlank()) continue;
+                answer.add(text.textValue().strip() + " [" + id.intValue() + "]");
+            }
+            return answer.length() == 0 ? Optional.empty() : Optional.of(answer.toString());
+        } catch (ResponseStatusException ex) {
+            // The evidence was already retrieved. A busy or unavailable synthesis worker is optional.
+            if (ex.getStatusCode().value() == 429 || ex.getStatusCode().is5xxServerError()) return Optional.empty();
+            throw ex;
+        }
     }
 }

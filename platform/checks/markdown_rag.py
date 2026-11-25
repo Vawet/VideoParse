@@ -19,7 +19,7 @@ CASES = [
 ]
 
 
-def run(base):
+def run(base, worker_offline=False):
     owner, outsider = requests.Session(), requests.Session()
 
     def api(session, verb, path, status=200, **kwargs):
@@ -42,6 +42,19 @@ def run(base):
     note = docs["学习方法.md"]
     api(outsider, "GET", "documents/" + note, 404)
     api(outsider, "POST", "documents/ask", 404, json={"question": "联网搜资料", "documentId": note})
+    if worker_offline:
+        # The same unavailable worker handles routing and optional generation.
+        # An explicit web request exposes that failure; local-only retrieval still has its evidence.
+        api(owner, "POST", "documents/ask", 503, json={"question": "联网搜索归并排序"})
+        doc = docs["算法笔记.md"]
+        result = api(owner, "POST", "documents/ask", json={"question": "归并排序", "documentId": doc, "documentsOnly": True})
+        assert result["source"] == "document" and result["generated"] is False and result["hits"]
+        hit = result["hits"][0]
+        assert hit["docId"] == doc and hit["body"] in NOTES["算法笔记.md"]
+        assert (hit["firstLine"], hit["lastLine"]) == (1, 2)
+        assert result["answer"] == hit["body"] + " [1]"
+        print("PASS local-only evidence, source lines and explicit routing failure during worker outage")
+        return
     for session, doc in [(owner, x) for x in docs.values()] + [(outsider, foreign["id"])]:
         deadline = time.monotonic() + 120
         while True:
@@ -98,4 +111,6 @@ def run(base):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("base", help="独立测试环境 API 地址，会创建访客和笔记")
-    run(parser.parse_args().base)
+    parser.add_argument("--worker-offline", action="store_true", help="在生成 worker 无法启动的独立实例验证原文回退")
+    args = parser.parse_args()
+    run(args.base, args.worker_offline)
