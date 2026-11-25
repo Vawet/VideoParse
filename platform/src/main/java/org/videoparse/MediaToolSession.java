@@ -17,11 +17,11 @@ final class MediaToolSession implements AutoCloseable {
         child=builder.redirectError(ProcessBuilder.Redirect.INHERIT).start();
         request=child.outputWriter(StandardCharsets.UTF_8); response=child.inputReader(StandardCharsets.UTF_8);
     }
-    JsonNode call(String name,Map<String,Object> args) throws Exception {
-        return call(name,args,45);
-    }
     JsonNode call(String name,Map<String,Object> args,int minutes) throws Exception {
-        request.write(json.writeValueAsString(Map.of("tool",name,"args",args)));request.newLine();request.flush();
+        return call(Map.of("tool",name,"args",args),minutes);
+    }
+    JsonNode call(Map<String,?> message,int minutes) throws Exception {
+        request.write(json.writeValueAsString(message));request.newLine();request.flush();
         var read=reader.submit(()->{
             for(String line;(line=response.readLine())!=null;)
                 if(line.startsWith("VP_RESULT ")) return json.readTree(line.substring(10));

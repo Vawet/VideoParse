@@ -16,6 +16,19 @@ def _read_requests(inbox):
     os._exit(0)
 
 
+def execute(ws, tool, args, repair=False):
+    stamp = checkpoints.key(ws, tool, args)
+    if repair and stamp:
+        # A validator rejected this stage. A crash during repair must not resurrect it.
+        ws.save(stamp, None)
+    cached = checkpoints.read(ws, tool, stamp)
+    if cached is not None:
+        return {**cached, "resumed": True}
+    result = tools.run_tool(tool, ws, args, "analyze")
+    checkpoints.write(ws, stamp, result)
+    return result
+
+
 def main():
     job_id, video_id = sys.argv[1:]
     ws = Workspace(video_id)
@@ -30,13 +43,7 @@ def main():
             if tool == "close":
                 return
             try:
-                stamp = checkpoints.key(ws, tool, args)
-                result = checkpoints.read(ws, tool, stamp)
-                if result is None:
-                    result = tools.run_tool(tool, ws, args, "analyze")
-                    checkpoints.write(ws, stamp, result)
-                else:
-                    result = {**result, "resumed": True}
+                result = execute(ws, tool, args, repair=message.get("repair") is True)
             except Exception as exc:
                 result = {"error": str(exc)}
             print("VP_RESULT " + json.dumps(result, ensure_ascii=False), flush=True)

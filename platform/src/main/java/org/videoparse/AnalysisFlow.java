@@ -26,14 +26,15 @@ class AnalysisFlow {
     private class Run {
         final MediaToolSession session;
         final Consumer<String> emit;
-        final LinkedHashSet<String> issues=new LinkedHashSet<>();
         int step=0;
         Run(MediaToolSession session,Consumer<String> emit){this.session=session;this.emit=emit;}
         JsonNode tool(String name,Map<String,Object> args) throws Exception {
+            return tool(name,args,false);
+        }
+        JsonNode tool(String name,Map<String,Object> args,boolean repair) throws Exception {
             emit.accept(json.writeValueAsString(Map.of("type","tool_start","step",++step,"tool",name,"args",args)));
-            var obs=session.call(name,args);
+            var obs=session.call(Map.of("tool",name,"args",args,"repair",repair),45);
             boolean ok=!obs.has("error") && obs.path("ok").asBoolean(true);
-            if(!ok) issues.add(name);
             emit.accept(json.writeValueAsString(Map.of("type","tool_end","step",step,"tool",name,"ok",ok,"observation",obs)));
             return obs;
         }
@@ -69,7 +70,12 @@ class AnalysisFlow {
                         UserMessage.from(check.path("issues").toString())).aiMessage().text().strip();
                 } catch(Exception unavailable){break;}
                 if(!REPAIRABLE.contains(action) || !attempted.add(action)) break;
-                run.tool(action,action.equals("extract_keyframes")?frameArgs:Map.of());
+                var args=switch(action) {
+                    case "extract_keyframes" -> frameArgs;
+                    case "write_frame_notes" -> Map.<String,Object>of("max_frames",30);
+                    default -> Map.<String,Object>of();
+                };
+                run.tool(action,args,true);
                 check=run.tool("validate_result");
             }
             String note=check.has("error") || !check.path("issues").isEmpty()

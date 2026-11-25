@@ -565,3 +565,27 @@ def test_extract_keyframes_reports_dedupe_backend(env, monkeypatch):
     tools.run_tool("get_video_info", ws, {}, "analyze")
     r = tools.run_tool("extract_keyframes", ws, {"strategy": "slides"}, "analyze")
     assert r["dedupe_backend"] == "hash" and "无需重复尝试" in r["note"]
+
+
+def test_rejected_checkpoint_is_recomputed_even_if_repair_was_interrupted(env, monkeypatch):
+    from app.agent.state import Workspace
+    from app import tool_worker
+
+    ws = Workspace(env.video_id)
+    ws.job_id = "repair-test"
+    ws.save("transcript", {"segments": [{"text": "例子", "start_time": 0, "end_time": 10}], "text": "例子"})
+    ws.update_meta(duration=10)
+    # The fixture returns a 30s segment. The tool succeeds and the validator rejects it.
+    tool_worker.execute(ws, "analyze_structure", {})
+    assert tool_worker.execute(ws, "analyze_structure", {})["resumed"]
+    assert any("超出" in issue["problem"] for issue in tool_worker.execute(ws, "validate_result", {})["issues"])
+
+    from app.services import llm
+    valid = [{"title": "修复", "time_range": {"start_time": "00:00:00", "end_time": "00:00:08"}}]
+    with monkeypatch.context() as m:
+        m.setattr(tool_worker.tools, "run_tool", lambda *args: {"error": "中途退出"})
+        assert "error" in tool_worker.execute(ws, "analyze_structure", {}, repair=True)
+    monkeypatch.setattr(llm, "semantic_divide", lambda *args: (valid, []))
+    assert not tool_worker.execute(ws, "analyze_structure", {}).get("resumed")
+    assert ws.load("division") == valid
+    assert tool_worker.execute(ws, "analyze_structure", {})["resumed"]
