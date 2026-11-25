@@ -12,6 +12,12 @@ from app import learning_api
     ("别去网上查，这些参考资料是怎么分类的？", False), ("Use only my notes to find the latest release.", False),
     ("不要只看视频，联网搜索官方文档", True), ("联网查离线学习的最新进展", True),
     ("Don't only use my notes; search the web for official docs.", True),
+    ("别再去网上查，整理最近的研究进展", False),
+    ("不要只看笔记，请在网上查视频里提到的论文", True),
+    ("Don't search my notes. Search the web for official docs.", True),
+    ("Don't search online for the latest release.", False),
+    ("Don't search my notes online for the latest release.", False),
+    ("视频里老师在网上查了哪些资料？", False),
 ])
 def test_routing(question, web):
     assert web_search.needs_web(question) is web
@@ -35,12 +41,15 @@ def test_web_contract_and_query_privacy(monkeypatch):
     assert reply["source"] == "web"
 
 
-def test_restricted_question_uses_local_handlers(monkeypatch):
+@pytest.mark.parametrize("question", [
+    "仅参考我的讲义，找出最新研究的参考资料",
+    "不要在网上搜索，整理最新进展",
+])
+def test_restricted_question_uses_local_handlers(monkeypatch, question):
     def unexpected_search(*args, **kwargs):
         pytest.fail("A restricted question reached public search")
     monkeypatch.setattr(web_search, "search", unexpected_search)
     monkeypatch.setattr(learning_api.loop, "chat_with_course", lambda *a, **kw: ("课堂原文", [], []))
-    question = "仅参考我的讲义，找出最新研究的参考资料"
     assert learning_api.search_if_requested({"question": question}, "/api") == ({"success": True, "source": "local"}, 200)
     reply, status = learning_api.chat({"course_id": "fixture", "question": question}, "/api")
     assert status == 200 and reply["source"] == "course" and reply["answer"] == "课堂原文"
