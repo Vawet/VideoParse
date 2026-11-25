@@ -23,6 +23,7 @@ export function ParseStatusBar() {
     uploadProgress,
     fileMeta,
     activeStep,
+    isLive,
     failure,
     lecture,
     available,
@@ -101,7 +102,7 @@ export function ParseStatusBar() {
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium">解析在「讲义生成」阶段失败</p>
+              <p className="text-[13px] font-medium">解析在「{isLive ? (activeStep?.label ?? "解析") : "讲义生成"}」阶段失败</p>
               <p className="mt-1 text-[11px] leading-relaxed opacity-90">{failure.reason}</p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button size="sm" onClick={retry} className="h-8 gap-1.5 rounded-full">

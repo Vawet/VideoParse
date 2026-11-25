@@ -78,7 +78,7 @@ class TaskController {
     ResponseEntity<StreamingResponseBody> events(@PathVariable String id,
         @RequestHeader(value="Last-Event-ID",defaultValue="0") long cursor) {
         require(id);
-        return ResponseEntity.ok().cacheControl(CacheControl.noCache()).header("X-Accel-Buffering","no").body(out -> {
+        return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noCache()).header("X-Accel-Buffering","no").body(out -> {
             long after=Math.max(0,cursor), heartbeat=0;
             for (;;) {
                 var job=require(id);
