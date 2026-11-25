@@ -93,24 +93,72 @@ export type AgentEvent =
 
 /** Subscribes to the Agent's event stream. Returns an unsubscribe function. */
 export function subscribeTask(taskId: string, onEvent: (event: AgentEvent) => void): () => void {
-  const source = new EventSource(`${API_BASE}/tasks/${taskId}/events`);
-  source.onmessage = (message) => {
-    try {
-      const event = JSON.parse(message.data) as AgentEvent;
-      onEvent(event);
-      if (event.type === "end") source.close();
-    } catch {
-      /* keep-alive or malformed frame */
-    }
-  };
-  source.onerror = () => {
-    // EventSource would retry forever; a closed stream means the task is gone.
-    if (platform && source.readyState === EventSource.CONNECTING) return;
-    if (!platform && source.readyState === EventSource.CLOSED) return;
+  const taskUrl = `${API_BASE}/tasks/${encodeURIComponent(taskId)}`;
+  let source: EventSource;
+  let stopped = false;
+  let lastId = 0;
+  let received = 0;
+  let lastActivity = Date.now();
+  let timer: number | undefined;
+
+  function close() {
+    stopped = true;
     source.close();
-    onEvent({ type: "end", status: "error", error: "与后端的事件连接中断" });
-  };
-  return () => source.close();
+    window.clearInterval(timer);
+  }
+
+  function deliver(event: AgentEvent) {
+    if (stopped) return;
+    if (event.type === "end") close();
+    onEvent(event);
+  }
+
+  function connect() {
+    const stream = new EventSource(taskUrl + "/events");
+    source = stream;
+    stream.onmessage = (message) => {
+      if (stopped || stream !== source) return;
+      const id = Number(message.lastEventId);
+      if (id > 0 && id <= lastId) return;
+      let event: AgentEvent;
+      try { event = JSON.parse(message.data) as AgentEvent; }
+      catch { return; }
+      if (id > 0) lastId = id;
+      received++;
+      lastActivity = Date.now();
+      deliver(event);
+    };
+    stream.onerror = () => {
+      if (platform || stream.readyState === EventSource.CLOSED) return;
+      deliver({ type: "end", status: "error", error: "与后端的事件连接中断" });
+    };
+  }
+
+  // A reverse proxy can leave EventSource OPEN after the worker has disappeared.
+  async function reconcile() {
+    if (Date.now() - lastActivity < 10000) return;
+    try {
+      const response = await fetch(taskUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+      if (stopped) return;
+      if (response.status === 404) {
+        deliver({ type: "end", status: "error", error: "任务不存在" });
+        return;
+      }
+      if (!response.ok) return;
+      const task = await response.json();
+      if (stopped || !task.success) return;
+      if (task.status === "done" || task.status === "error") {
+        deliver({ type: "end", status: task.status, error: task.error });
+      } else if (source.readyState === EventSource.CLOSED || task.events > received) {
+        source.close();
+        connect();
+      }
+    } catch { /* The next check can resume when the platform is reachable. */ }
+  }
+
+  connect();
+  if (platform) timer = window.setInterval(reconcile, 10000);
+  return close;
 }
 
 export type RawResult = {
