@@ -167,6 +167,30 @@
   }
 }
 
+/* Keep the same player and results mounted when opening the sidebar narrows the page. */
+.study-reader { container: study-reader / inline-size; }
+@container study-reader (max-width: 739px) {
+  /* PanelGroup sets display and overflow inline for its resizable desktop layout. */
+  .study-panels { display: block !important; overflow-y: auto !important; }
+  .study-media-panel, .study-video-pane { display: contents; }
+  .study-divider { display: none; }
+  .study-player { @apply sticky top-0 z-30 border-b bg-background p-3 pb-2 shadow-soft; }
+  .study-chapters { @apply max-h-[48vh] p-3; }
+}
+.study-home { container: study-home / inline-size; }
+@container study-home (max-width: 580px) {
+  .study-upload, .study-features { grid-template-columns: minmax(0, 1fr); }
+  .study-upload > :last-child { grid-column: 1; }
+}
+@media (max-width: 767px) {
+  .study-library-nav :is(a,button) { min-height: 44px; }
+}
+@layer components {
+  .library-toggle {
+    @apply absolute left-2.5 top-2 z-40 size-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground;
+  }
+}
+
 @layer components {
   /* Editorial micro-label: the numbered, letter-spaced captions of the reference */
   .label-mono {

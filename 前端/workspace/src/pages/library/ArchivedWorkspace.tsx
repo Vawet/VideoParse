@@ -14,7 +14,7 @@ function LoadVideo({id}: {id: string}) {
     return () => controller.abort();
   }, [id]);
   if (archive) return <Workspace archive={archive}/>;
-  return <main className="mx-auto max-w-3xl space-y-4 p-8">
+  return <main className="mx-auto max-w-3xl space-y-4 px-6 pt-16">
     <Link to="/library" className="text-sm text-primary underline">返回资料库</Link>
     <p role="status">{error || "正在读取视频解析结果…"}</p>
   </main>;

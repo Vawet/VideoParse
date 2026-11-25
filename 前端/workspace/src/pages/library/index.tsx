@@ -1,25 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, FileText, Film, Folder, Upload } from "lucide-react";
-import { Link } from "react-router-dom";
+import { FileText, Upload } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { fetchLibrary, type LibraryDocument as Document, type LibraryFolder, type LibraryVideo, type WebSource } from "@/lib/api";
+import type { LibraryDocument as Document, WebSource } from "@/lib/api";
 import { api } from "./api";
-import { LegacyImport } from "./LegacyImport";
+import { indexPending, useLibrary } from "./use-library";
+import { ThemeToggle } from "../workspace/components/ThemeToggle";
 import { ReviewQueue } from "./ReviewQueue";
 
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
 type Answer = { source: "web"; answer: string; web_sources: WebSource[] } |
   { source: "document"; answer: string; generated: boolean; used_vectors: boolean; hits: Passage[] };
-type Reading = { doc: Document; lines: string[]; from: number; to: number; page: number };
+type Reading = { doc: Document; lines: string[]; from: number; to: number; page: number; locate: boolean };
 const PAGE_LINES = 160;
-const pending = (doc: Document) => doc.indexState === "pending" || doc.indexState === "indexing";
-
 export default function Library() {
-  const [docs, setDocs] = useState<Document[]>([]);
-  const [folders, setFolders] = useState<LibraryFolder[]>([]);
-  const [videos, setVideos] = useState<LibraryVideo[]>([]);
-  const refreshId = useRef(0);
-  const [scope, setScope] = useState("");
+  const [params] = useSearchParams();
+  const selected = params.get("doc") || "";
+  return <LibraryPage key={selected} selected={selected}/>;
+}
+
+function LibraryPage({selected}: {selected: string}) {
+  const library = useLibrary();
+  const docs = library.data?.documents ?? [];
+  const current = docs.find(d => d.id === selected);
+  const [scope, setScope] = useState(selected);
   const [documentsOnly, setDocumentsOnly] = useState(false);
   const [reading, setReading] = useState<Reading | null>(null);
   const [question, setQuestion] = useState("");
@@ -30,42 +34,25 @@ export default function Library() {
   const [searching, setSearching] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const picker = useRef<HTMLInputElement>(null);
   const resultLine = useRef<HTMLSpanElement>(null);
   const readId = useRef(0);
-  const needsRefresh = docs.some(pending);
-  const refresh = useCallback(async () => {
-    const generation = ++refreshId.current;
-    const data = await fetchLibrary();
-    if (generation !== refreshId.current) return;
-    setDocs(data.documents);
-    setFolders(data.folders);
-    setVideos(data.videos);
-  }, []);
-  useEffect(() => { refresh().catch(e => setError(e.message)).finally(() => setLoading(false)); }, [refresh]);
   useEffect(() => {
-    const reload = () => { if (document.visibilityState === "visible") refresh().catch(e => setError(e.message)); };
-    document.addEventListener("visibilitychange", reload);
-    return () => document.removeEventListener("visibilitychange", reload);
-  }, [refresh]);
-  useEffect(() => {
-    if (!needsRefresh) return;
-    const id = window.setInterval(() => { refresh().catch(e => setError(e.message)); }, 3000);
-    return () => window.clearInterval(id);
-  }, [needsRefresh, refresh]);
-  useEffect(() => {
-    if (reading) resultLine.current?.scrollIntoView({ block: "nearest" });
+    if (reading?.locate) resultLine.current?.scrollIntoView({ block: "nearest" });
   }, [reading]);
 
-  async function read(id: string, from = 1, to = 1) {
+  const read = useCallback(async (id: string, from = 1, to = 1, locate = true) => {
     const generation = ++readId.current;
     try {
-      const data = await api<{document: Document; markdown: string}>("/" + id);
+      const data = await api<{document: Document; markdown: string}>("/" + encodeURIComponent(id));
       if (generation === readId.current) setReading({doc: data.document, lines: data.markdown.split("\n"),
-        from, to, page: Math.floor((from - 1) / PAGE_LINES)});
-    } catch (e) { setError((e as Error).message); }
-  }
+        from, to, locate, page: Math.floor((from - 1) / PAGE_LINES)});
+    } catch (e) { if (generation === readId.current) setError((e as Error).message); }
+  }, []);
+  useEffect(() => {
+    if (selected) void read(selected, 1, 1, false);
+    return () => { readId.current++; };
+  }, [selected, read]);
 
   async function upload(files: File[]) {
     if (!files.length) return;
@@ -78,7 +65,7 @@ export default function Library() {
     } catch (e) { setError((e as Error).message); }
     finally {
       if (picker.current) picker.current.value = "";
-      await refresh().catch(e => setError(e.message));
+      await library.refetch();
       setUploading(false);
     }
   }
@@ -103,48 +90,28 @@ export default function Library() {
     } catch (e) { setError((e as Error).message); }
   }
 
-  return <main className="min-h-screen bg-background text-foreground">
-    <header className="border-b border-border">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm"><ArrowLeft size={16}/>视频工作台</Link>
-        <Button disabled={uploading} onClick={() => picker.current?.click()}><Upload size={16}/>{uploading ? "正在上传…" : "上传 Markdown"}</Button>
-        <input className="hidden" type="file" ref={picker} multiple accept=".md,.markdown" aria-label="选择 Markdown 文件"
-          onChange={e => void upload(Array.from(e.target.files || []))}/>
+  return <main className="flex h-full min-w-0 flex-col bg-background text-foreground">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border pl-14 pr-3 sm:pr-6">
+      <span className="truncate text-sm font-medium">{selected ? "文档阅读" : "资料问答与复习"}</span>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button size="sm" disabled={uploading} onClick={() => picker.current?.click()}><Upload size={15}/>{uploading ? "正在上传…" : "上传 Markdown"}</Button>
+        <ThemeToggle/>
       </div>
+      <input className="hidden" type="file" ref={picker} multiple accept=".md,.markdown" title="UTF-8 Markdown，每份上限 512 KiB" aria-label="选择 Markdown 文件"
+        onChange={e => void upload(Array.from(e.target.files || []))}/>
     </header>
-    <div className="mx-auto max-w-6xl p-5 md:p-8">
-      <h1 className="mb-6 flex items-center gap-3 text-3xl font-semibold"><BookOpen className="text-primary"/>我的资料库</h1>
-      {error && <p role="alert" className="mb-4 rounded border border-destructive/40 p-3 text-sm">{error}</p>}
-      <div className="grid items-start gap-6 md:grid-cols-[minmax(220px,1fr)_minmax(0,2fr)]">
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="mb-3 font-semibold">我的文件夹</h2>
-          {loading && <p className="text-sm text-muted-foreground">正在读取…</p>}
-          {folders.map(folder => <details key={folder.id} open className="border-t border-border py-3">
-            <summary className="cursor-pointer font-medium">
-              <span className="inline-flex items-center gap-2 align-middle"><Folder size={16}/>{folder.name}
-                <span className="text-xs text-muted-foreground">{folder.id === "videos" ? videos.length : docs.length}</span>
-              </span>
-            </summary>
-            {folder.id === "videos" ? <div className="mt-2">
-              {!videos.length && <p className="text-sm text-muted-foreground">解析完成的视频会自动保存在这里。</p>}
-              <ul className="divide-y divide-border">{videos.map(video => <li key={video.id} className="py-2">
-                <Link to={"/library/videos/" + encodeURIComponent(video.id)} className="flex items-center gap-2 text-sm hover:underline">
-                  <Film size={16}/>{video.name}
-                </Link>
-              </li>)}</ul>
-              <LegacyImport/>
-            </div> : <div className="mt-2">
-              {!docs.length && <p className="text-sm text-muted-foreground">上传一份 UTF-8 Markdown 笔记，即可按原文提问。每份上限 512 KiB。</p>}
-              <ul className="divide-y divide-border">{docs.map(d => <li key={d.id} className="py-3">
-                <button className="flex items-center gap-2 text-left text-sm font-medium" onClick={() => void read(d.id)}><FileText size={16}/>{d.name}</button>
-                <span className="mt-1 block text-xs text-muted-foreground">{d.indexState === "ready" ? `向量索引就绪 · ${d.chunks} 段` :
-                  pending(d) ? `正在建立向量索引 · ${d.indexedChunks}/${d.chunks}` : "向量索引失败，可用全文检索"}</span>
-                {d.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+d.id+"/retry",{method:"POST"}).then(refresh).catch(e=>setError(e.message))}>重试索引</button>}
-              </li>)}</ul>
-            </div>}
-          </details>)}
-        </section>
-        <div className="space-y-5">
+    <div className="vp-scroll min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[850px] px-5 py-7 sm:px-9 sm:py-10">
+        <h1 className="break-words text-[28px] font-semibold tracking-tight sm:text-[34px]">{current?.name ?? (selected ? "文档阅读" : "资料问答与复习")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{current
+          ? current.indexState === "ready" ? `已索引 · ${current.chunks} 个段落` : indexPending(current.indexState)
+            ? `正在建立索引 · ${current.indexedChunks}/${current.chunks}` : "向量索引失败，可使用全文检索"
+          : "从笔记中查找依据，把值得记住的段落加入复习。"}</p>
+        {current?.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+current.id+"/retry",{method:"POST"}).then(()=>library.refetch()).catch(e=>setError(e.message))}>重试索引</button>}
+        {!selected && !docs.length && library.isSuccess && <p className="mt-2 text-xs text-muted-foreground">支持 UTF-8 Markdown，每份上限 512 KiB。</p>}
+        {library.isError && <button type="button" className="mt-3 text-sm text-primary underline" onClick={() => void library.refetch()}>资料库读取失败，重试</button>}
+        {error && <p role="alert" className="mt-4 rounded border border-destructive/40 p-3 text-sm">{error}</p>}
+        <div className="mt-6 flex flex-col gap-5">
           <section className="space-y-3 rounded-xl border border-border bg-card p-5">
             <h2 className="font-semibold">资料问答</h2>
             <form className="space-y-3" onSubmit={e => {e.preventDefault(); void ask();}}>
@@ -181,8 +148,8 @@ export default function Library() {
             </article>}
           </section>
           <ReviewQueue updated={reviewUpdated} openSource={read} onRemove={()=>setSaved(new Set())}/>
-          {reading && <section className="rounded-xl border border-border bg-card p-5">
-            <h2 className="mb-3 font-semibold">{reading.doc.name} · 原文</h2>
+          {reading && <section className={`rounded-xl border border-border bg-card p-5 ${selected ? "order-first" : ""}`}>
+            <h2 className="mb-3 flex items-center gap-2 font-semibold"><FileText size={16}/>{selected === reading.doc.id ? "原文" : reading.doc.name+" · 原文"}</h2>
             {reading.lines.length > PAGE_LINES && <nav aria-label="原文分页" className="mb-3 flex items-center gap-3 text-sm">
               <Button variant="outline" size="sm" disabled={reading.page === 0}
                 onClick={()=>setReading({...reading, page: reading.page - 1})}>上一页</Button>
@@ -193,7 +160,7 @@ export default function Library() {
             <pre key={reading.doc.id + "/" + reading.page} className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words text-sm">{reading.lines.slice(reading.page * PAGE_LINES,(reading.page + 1) * PAGE_LINES).map((line,offset)=>{
               const i=reading.page * PAGE_LINES + offset;
               return (
-              <span key={i} ref={i+1===reading.from ? resultLine : undefined} className={`block ${i+1>=reading.from && i+1<=reading.to ? "bg-primary/15" : ""}`}>
+              <span key={i} ref={i+1===reading.from ? resultLine : undefined} className={`block ${reading.locate && i+1>=reading.from && i+1<=reading.to ? "bg-primary/15" : ""}`}>
                 <span className="mr-3 select-none text-xs text-muted-foreground">{i+1}</span>{line}
               </span>);
             })}</pre>

@@ -17,7 +17,7 @@ export function usePlayerShortcuts(enabled: boolean) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest(`${FORM_FIELDS}, button, [role='slider'], [role='tab']`)) return;
+      if (target?.closest(`${FORM_FIELDS}, nav, button, a, [role='dialog'], [role='slider'], [role='tab']`)) return;
 
       if (event.code === "Space") {
         event.preventDefault();

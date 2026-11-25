@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
-import { ArrowUpRight, FlaskConical, FolderUp, Play } from "lucide-react";
+import { FolderUp, CloudUpload, FlaskConical, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
+import demoPreview from "@/assets/demo-slides/slide-2.webp";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "../hooks/use-workspace";
 
@@ -27,108 +28,37 @@ export function UploadDropzone() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
-      <div
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragging(false);
-          const file = event.dataTransfer.files?.[0];
-          if (file) accept(file);
-        }}
-        className={cn(
-          "frame-brackets relative flex flex-1 flex-col justify-start gap-7 overflow-hidden rounded-xl border border-dashed p-6 transition-colors duration-200 ease-smooth md:p-8",
-          dragging
-            ? "border-primary/70 bg-primary-soft"
-            : "border-border/70 bg-card/30 hover:border-border",
-        )}
-      >
-        <div className="ambient-glow pointer-events-none absolute inset-0 opacity-60" aria-hidden />
-        <span
-          className="display pointer-events-none absolute -bottom-8 right-2 select-none text-[7rem] leading-none text-foreground/[0.045]"
-          aria-hidden
-        >
-          01
-        </span>
-
-        <div className="relative space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="label-mono text-[9px]">01 · Input</span>
-            <span className="h-px flex-1 bg-border/70" aria-hidden />
-            <span className="label-mono text-[9px]">Video file</span>
+    <div className="study-upload mt-7 grid items-stretch gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <section
+        aria-label="导入视频"
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+        onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files[0]) accept(e.dataTransfer.files[0]); }}
+        className={cn("frame-brackets flex flex-col items-center justify-center rounded-xl border border-dashed px-5 py-8 text-center transition-colors",
+          dragging ? "border-primary bg-primary/10" : "border-primary/35 bg-primary/[0.035]")}>
+        <span className="mb-4 grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary"><CloudUpload size={26}/></span>
+        <h2 className="display text-[1.65rem] leading-tight">把视频拖到这里</h2>
+        <p className="mb-5 mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">MP4 · MOV · MKV · WebM · M4V <span className="text-gold">≤ 2 GB</span></p>
+        <Button onClick={()=>inputRef.current?.click()} className="gap-2 rounded-full px-5"><FolderUp size={15}/>选择视频文件</Button>
+        <input ref={inputRef} aria-label="选择视频" type="file" accept={ACCEPTED.join(",")} className="hidden"
+          onChange={e=>{const file=e.target.files?.[0]; if (file) accept(file); e.target.value="";}}/>
+      </section>
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
+        <button type="button" onClick={startDemo} aria-label="使用示例视频" className="group block h-full w-full text-left">
+          <div className="relative h-32 overflow-hidden bg-muted md:h-36">
+            <img src={demoPreview} alt="示例课中的 Q、K、V 讲解幻灯片" className="size-full object-cover object-center"/>
+            <span className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full bg-black/65 text-white"><Play size={15} fill="currentColor"/></span>
           </div>
-          <h2 className="display text-[1.6rem] leading-[1.28] text-foreground md:text-[1.95rem]">
-            把视频拖到这里,
-            <br />
-            剩下的交给 <span className="text-primary">Agent</span>。
-          </h2>
-          <p className="max-w-sm text-[12px] leading-[1.85] text-muted-foreground">
-            课程、讲座、PPT 讲解、口播都可以。解析完成后,你会拿到讲义、导图、关键帧、问答与复习材料。
-          </p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {["MP4", "MOV", "MKV", "WEBM"].map((format) => (
-              <span
-                key={format}
-                className="rounded-full border border-border/70 px-2 py-0.5 font-mono text-[8px] uppercase tracking-[0.14em] text-muted-foreground"
-              >
-                {format}
-              </span>
-            ))}
-            <span className="ml-1 font-mono text-[9px] text-gold/80">≤ 2 GB</span>
+          <div className="space-y-1.5 px-5 py-4">
+            <p className="font-mono text-xs text-gold">示例课程 · 46 分钟</p>
+            <h2 className="display text-xl leading-snug">注意力机制与 Transformer 入门</h2>
+            <span className="inline-block text-xs font-medium text-primary group-hover:underline">使用示例视频</span>
           </div>
-        </div>
-
-        <div className="relative flex flex-wrap items-center gap-2.5">
-          <Button
-            className="group h-10 gap-2 rounded-full bg-primary pl-5 pr-1.5 text-primary-foreground hover:bg-primary/90"
-            onClick={() => inputRef.current?.click()}
-          >
-            <span className="text-[13px] font-medium">选择视频文件</span>
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-foreground/15">
-              <FolderUp className="h-3.5 w-3.5" aria-hidden />
-            </span>
-          </Button>
-          <Button
-            variant="outline"
-            className="group h-10 gap-2 rounded-full border-border bg-transparent pl-5 pr-1.5 text-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={startDemo}
-          >
-            <span className="text-[13px]">使用示例视频</span>
-            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-gold/40 text-gold">
-              <Play className="h-3 w-3" aria-hidden />
-            </span>
-          </Button>
-        </div>
-
-        <div className="relative mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/60 pt-3">
-          <span className="label-mono text-[8px]">02 · Upload tips</span>
-          <span className="text-[10px] text-muted-foreground">视频只在本机预览,解析结果来自内置示例数据</span>
-          <button
-            type="button"
-            onClick={startFailureDemo}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] text-muted-foreground transition-colors duration-200 ease-smooth hover:bg-accent hover:text-accent-foreground"
-          >
-            <FlaskConical className="h-3 w-3" aria-hidden />
-            查看解析失败示例
-            <ArrowUpRight className="h-3 w-3 opacity-60" aria-hidden />
-          </button>
-        </div>
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED.join(",")}
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) accept(file);
-            event.target.value = "";
-          }}
-        />
+        </button>
+      </section>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground sm:col-span-2">
+        <span>{import.meta.env.VITE_PLATFORM === "true" ? "解析完成后，视频会自动归入资料库。" : "支持上传本机视频或体验内置示例。"}</span>
+        <button type="button" onClick={startFailureDemo} className="inline-flex items-center gap-1.5 hover:text-primary"><FlaskConical size={13}/>查看解析失败示例</button>
       </div>
     </div>
   );

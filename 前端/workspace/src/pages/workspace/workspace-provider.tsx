@@ -1,3 +1,6 @@
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { libraryKey } from "../library/use-library";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { exportSvgToPng } from "@/lib/export-svg-png";
@@ -60,6 +63,8 @@ const ALL_RESULTS: Record<ResultKey, boolean> = {
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export function WorkspaceProvider({ children, archive }: { children: React.ReactNode; archive?: ArchivedVideo }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mindmapSvgRef = useRef<SVGSVGElement | null>(null);
   const focusToken = useRef(0);
@@ -271,6 +276,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
             run.failLive(liveStepRef.current, event.error || liveErrorRef.current || "解析失败");
             return;
           }
+          if (import.meta.env.VITE_PLATFORM === "true") void queryClient.invalidateQueries({queryKey: libraryKey()});
           fetchResult(session.videoId)
             .then((result) => {
               if (sessionRef.current !== session) return;
@@ -285,7 +291,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
     } catch (error) {
       run.failLive("audio", errorMessage(error));
     }
-  }, [resetRunOutputs, run]);
+  }, [queryClient, resetRunOutputs, run]);
 
   const uploadFile = useCallback(
     async (file: File) => {
@@ -356,6 +362,10 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
   }, [run, runLive, source]);
 
   const clearProject = useCallback(() => {
+    if (archive) {
+      void navigate("/");
+      return;
+    }
     if (chatTimer.current) window.clearTimeout(chatTimer.current);
     chatBusyRef.current = false;
     loadDemoSource();
@@ -364,7 +374,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
     setLightbox({ open: false, index: 0 });
     run.reset();
     setStatus("empty");
-  }, [loadDemoSource, resetRunOutputs, run]);
+  }, [archive, navigate, loadDemoSource, resetRunOutputs, run]);
 
   useEffect(
     () => () => {
