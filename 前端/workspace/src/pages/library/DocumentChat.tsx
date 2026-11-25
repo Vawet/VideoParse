@@ -130,7 +130,7 @@ export function DocumentChat({selected, docs, saved, openSource, onSave}: {
     } finally {request.current = null; setBusy(false);}
   }
 
-  return <section aria-label="资料 AI 对话" className="library-chat flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+  return <section aria-label="资料 AI 对话" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
     <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
       <h2 className="flex items-center gap-2 font-semibold"><Sparkles size={17} className="text-primary"/>资料 AI 对话</h2>
       <Button variant="ghost" size="sm" disabled={busy || !turns.length} onClick={reset}><MessageSquarePlus size={15}/>新对话</Button>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, FileText, Upload } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { LibraryDocument as Document } from "@/lib/api";
 import { api, uploadDocument } from "./api";
 import { indexPending, useLibrary } from "./use-library";
@@ -130,8 +131,9 @@ function LibraryPage({selected}: {selected: string}) {
       <Button variant={panel === "chat" ? "secondary" : "ghost"} size="sm" aria-pressed={panel === "chat"} onClick={() => setPanel("chat")}>AI 对话</Button>
     </div>
     {error && <p role="alert" className="shrink-0 border-b border-destructive/40 px-4 py-2 text-sm">{error}</p>}
-    <div className="library-panes grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]">
-      <section aria-label="文档与复习" className="library-reader flex min-h-0 min-w-0 flex-col">
+    <ResizablePanelGroup direction="horizontal" autoSaveId="library-document-chat" className="min-h-0 flex-1">
+      <ResizablePanel id="library-reader" order={1} defaultSize={54} minSize={36} tagName="section"
+        aria-label="文档与复习" className="library-reader flex min-h-0 min-w-0 flex-col">
         <header className="shrink-0 border-b border-border px-5 pb-4 pt-5 lg:px-7">
           <h1 className="truncate text-[28px] font-semibold tracking-tight" title={sourceDoc?.name}>{sourceDoc?.name ?? (selected ? "文档阅读" : "资料问答与复习")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{sourceDoc
@@ -172,8 +174,12 @@ function LibraryPage({selected}: {selected: string}) {
             })}</pre>
           </section> : selected && !error && <p role="status" className="p-5 text-sm text-muted-foreground">正在读取原文…</p>}
         </div>
-      </section>
-      <DocumentChat selected={selected} docs={docs} saved={saved} openSource={openSource} onSave={saveForReview}/>
-    </div>
+      </ResizablePanel>
+      <ResizableHandle withHandle aria-label="调整原文与 AI 对话的宽度" aria-orientation="vertical"
+        title="拖动分隔线，或用左右方向键调整宽度" className="library-divider hover:bg-primary focus-visible:bg-primary data-[resize-handle-state=drag]:bg-primary"/>
+      <ResizablePanel id="library-chat" order={2} defaultSize={46} minSize={36} className="library-chat min-h-0 min-w-0">
+        <DocumentChat selected={selected} docs={docs} saved={saved} openSource={openSource} onSave={saveForReview}/>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   </main>;
 }
