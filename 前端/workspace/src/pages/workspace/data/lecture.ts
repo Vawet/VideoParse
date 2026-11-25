@@ -1,15 +1,9 @@
+import motivationSlide from "@/assets/demo-slides/slide-1.webp";
+import qkvSlide from "@/assets/demo-slides/slide-2.webp";
+import scaledDotSlide from "@/assets/demo-slides/slide-3.webp";
+import positionalSlide from "@/assets/demo-slides/slide-4.webp";
 import { formatTime } from "@/lib/format";
 import type { LectureData, MindmapNode, Segment } from "./types";
-
-const SLIDE_IMAGES = {
-  motivation:
-    "/public/demo-slides/slide-1.png",
-  qkv: "/public/demo-slides/slide-2.png",
-  scaledDot:
-    "/public/demo-slides/slide-3.png",
-  positional:
-    "/public/demo-slides/slide-4.png",
-};
 
 const NOTES_MARKDOWN = `本课用 46 分钟回答一个问题:**如果不按顺序读完整段输入,模型怎么知道该看哪里?** 下面按课程顺序整理,每段末尾的时间戳都可以点击,点了就回到视频对应位置。
 
@@ -261,7 +255,7 @@ const BASE: LectureData = {
     {
       id: "s1",
       time: 312,
-      image: SLIDE_IMAGES.motivation,
+      image: motivationSlide,
       title: "RNN 的信息瓶颈",
       caption: "长距离依赖在逐跳传递中被稀释;注意力让任意两步直接相连。",
       segmentId: "s2",
@@ -269,7 +263,7 @@ const BASE: LectureData = {
     {
       id: "s2",
       time: 760,
-      image: SLIDE_IMAGES.qkv,
+      image: qkvSlide,
       title: "Q / K / V 的检索类比",
       caption: "Query 是要找的问题,Key 是索引,Value 是真正取回的内容。",
       segmentId: "s3",
@@ -277,7 +271,7 @@ const BASE: LectureData = {
     {
       id: "s3",
       time: 1265,
-      image: SLIDE_IMAGES.scaledDot,
+      image: scaledDotSlide,
       title: "缩放点积注意力公式",
       caption: "除以 √d_k 让相似度分布保持可训练,矩阵形状也随之写清。",
       segmentId: "s4",
@@ -285,7 +279,7 @@ const BASE: LectureData = {
     {
       id: "s4",
       time: 1998,
-      image: SLIDE_IMAGES.positional,
+      image: positionalSlide,
       title: "正弦位置编码",
       caption: "不同频率的正弦波叠加,让每个位置拥有唯一指纹。",
       segmentId: "s6",

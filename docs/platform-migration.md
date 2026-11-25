@@ -51,7 +51,7 @@ python -m app.migrate_learning /只读快照/videoparse.db
 
 ## 验证与边界
 
-- **任务和界面。** 独立环境使用真实 MySQL、Redis、MinIO、RocketMQ 和 Qdrant。8 个并发提交只创建一个活动任务。解析一段 8 秒无声 MP4 期间强制结束 JVM，重启后同一任务复用了阶段检查点。浏览器验证上传、进度、证据检索、答题判分、打开复习和讲授，以及刷新重开；示例八个标签与 PDF/PNG 导出菜单均可访问。FFmpeg 和存储使用真实实现，讲义与问答使用本地模型替身。
+- **任务和界面。** 独立环境使用真实 MySQL、Redis、MinIO、RocketMQ 和 Qdrant。8 个并发提交只创建一个活动任务。解析一段 8 秒无声 MP4 期间强制结束 JVM，重启后同一任务复用了阶段检查点。浏览器验证上传、进度、证据检索、答题判分、打开复习和讲授，以及刷新重开；示例八个标签与 PDF/PNG 导出菜单均可访问。在生产构建中，浏览器已逐张验证示例封面、讲义插图及 PPT 的缩略图和放大图。FFmpeg 和存储使用真实实现，讲义与问答使用本地模型替身。
 - **字幕检索。** 同一视频的 5 道字面题，Java BM25 和平台混合检索的 Hit@1 均为 5/5。另 7 道换说法题，Java BM25 的 Hit@1、Hit@3 为 4/7、5/7；接入真实本地 BGE 和 Qdrant 后为 5/7、6/7。原 Python 混合检索为 6/7、6/7。题集只覆盖一个短视频，不能据此推断长视频 OCR 或最终答案的准确率。
 - **复测入口。** 对已结束任务运行 `python3 platform/checks/replay.py http://localhost:8088/api 任务ID`，可核查事件流 MIME 类型、递增事件 ID 和续读。在独立测试工作区将 `后端/app/tests/eval/golden.json` 放到 `outputs/eval-video_work/transcript.json`，从 `后端/` 运行 `python -m app.tests.eval.retrieval_eval --platform-api http://localhost:8088/api`，可测 Spring 实际检索结果。
 - **部署边界。** 已检查 Compose 八个服务配置，正常打包 Java 和前端。整套容器构建在拉取 Docker Hub 基础镜像时网络超时，尚未验证全容器冷启动。商业模型效果、生产并发和最低服务器内存也未实测。
