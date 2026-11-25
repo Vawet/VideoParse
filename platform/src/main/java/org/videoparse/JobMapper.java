@@ -53,11 +53,13 @@ public interface JobMapper {
     void event(String job,String json);
     @Select("SELECT id,CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload FROM vp_event WHERE job_id=#{job} AND id>#{after} ORDER BY id LIMIT 100")
     List<Event> events(String job,long after);
-    String TAIL_FIELDS = "SELECT j.id,j.status,COALESCE((SELECT MAX(e.id) FROM vp_event e WHERE e.job_id=j.id),0) AS last_event";
-    @Select(TAIL_FIELDS + OWNED_JOB)
+    @Select("SELECT j.id,j.status,COALESCE((SELECT MAX(id) FROM vp_event WHERE job_id=#{id}),0) AS last_event" + OWNED_JOB)
     Tail ownedTail(String id, String owner);
+    String JOB_IDS = "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>";
+    // Group on the leading replay index column so MySQL can skip each job's event history.
     @MapKey("id")
-    @Select("<script>" + TAIL_FIELDS + " FROM vp_job j WHERE j.id IN " +
-        "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
+    @Select("<script>SELECT j.id,j.status,COALESCE(t.last_event,0) AS last_event FROM vp_job j " +
+        "LEFT JOIN (SELECT job_id,MAX(id) AS last_event FROM vp_event WHERE job_id IN " + JOB_IDS +
+        " GROUP BY job_id) t ON t.job_id=j.id WHERE j.id IN " + JOB_IDS + "</script>")
     Map<String,Tail> tails(@Param("ids") List<String> ids);
 }
