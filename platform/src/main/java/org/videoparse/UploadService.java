@@ -65,6 +65,8 @@ class UploadService {
             if(db.sql("SELECT COUNT(*) FROM vp_part WHERE upload_id=?").param(u.id()).query(Integer.class).single()!=n)
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"还有分片未上传");
             store.assemble(u.id(),n,u.storedName(),directory);
+            String title=u.filename().substring(0,u.filename().lastIndexOf('.'));
+            db.sql("INSERT INTO videos(id,title,duration,status,created_at) VALUES(?,?,0,'uploaded',UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE title=VALUES(title)").params(u.video(),title).update();
             db.sql("UPDATE vp_upload SET complete=true WHERE id=?").param(u.id()).update();
         }
         return Map.of("success",true,"filepath",u.storedName(),"video_id",u.video());
