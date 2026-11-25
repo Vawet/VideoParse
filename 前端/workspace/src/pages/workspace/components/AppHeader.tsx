@@ -1,4 +1,5 @@
 import { Download, FileText, FolderOpen, Waypoints } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -51,6 +52,9 @@ export function AppHeader() {
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {import.meta.env.VITE_PLATFORM === "true" && <Button asChild variant="outline" size="sm">
+          <Link to="/library" target="_blank" rel="noopener">资料库</Link>
+        </Button>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
