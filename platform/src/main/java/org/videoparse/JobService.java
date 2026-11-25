@@ -10,12 +10,18 @@ import org.springframework.transaction.annotation.Transactional;
 class JobService {
     private final JobMapper jobs;
     private final ObjectMapper json;
-    JobService(JobMapper jobs, ObjectMapper json) { this.jobs = jobs; this.json = json; }
+    private final boolean mq;
+    JobService(JobMapper jobs, ObjectMapper json, @org.springframework.beans.factory.annotation.Value("${vp.mq.enabled:false}") boolean mq) {
+        this.jobs = jobs; this.json = json; this.mq = mq;
+    }
 
     @Transactional
     public String submit(String video) {
-        jobs.submit(UUID.randomUUID().toString().replace("-", ""), video);
-        return jobs.active(video);
+        String proposed=UUID.randomUUID().toString().replace("-", "");
+        jobs.submit(proposed, video);
+        String active=jobs.active(video);
+        if(mq && proposed.equals(active)) jobs.enqueue(active);
+        return active;
     }
 
     @Transactional

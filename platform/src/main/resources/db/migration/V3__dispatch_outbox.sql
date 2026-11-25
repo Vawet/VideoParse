@@ -1,0 +1,5 @@
+CREATE TABLE vp_dispatch (
+  job_id CHAR(32) PRIMARY KEY,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(job_id) REFERENCES vp_job(id)
+);

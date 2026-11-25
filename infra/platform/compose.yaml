@@ -33,6 +33,24 @@ services:
       MINIO_ROOT_USER: videoparse
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?}
     volumes: [objects:/data]
+  namesrv:
+    image: apache/rocketmq:5.3.4
+    command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: -Xms128m -Xmx256m -Xmn64m
+  broker:
+    image: apache/rocketmq:5.3.4
+    depends_on: [namesrv]
+    environment:
+      JAVA_OPT_EXT: -Xms256m -Xmx384m -Xmn96m
+    command:
+      - sh
+      - -ec
+      - |
+        echo "brokerIP1=$$(hostname -i | cut -d' ' -f1)" > /tmp/vp-broker.conf
+        echo 'flushDiskType=SYNC_FLUSH' >> /tmp/vp-broker.conf
+        exec sh mqbroker -n namesrv:9876 -c /tmp/vp-broker.conf
+    volumes: [messages:/home/rocketmq/store]
   learning:
     build:
       context: ../../后端
@@ -57,6 +75,9 @@ services:
       MINIO_ACCESS_KEY: videoparse
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
       WORKER_DIR: /srv
+      ROCKETMQ_ENABLED: "true"
+      ROCKETMQ_NAMESERVER: namesrv:9876
+      WORKER_POLL_MS: 30000
     volumes: [work:/data, models:/root/.cache]
     depends_on:
       db: {condition: service_healthy}
@@ -74,3 +95,4 @@ volumes:
   objects:
   work:
   models:
+  messages:

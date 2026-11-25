@@ -20,3 +20,6 @@ docker compose -f infra/platform/compose.yaml up --build -d
 ```
 
 打开 http://localhost:8088 。网关为原学习工作台、Java 平台与兼容学习 API 提供同源入口。上传分片、任务和 SSE 由 Spring 提供；学习数据在本部署自己的 MySQL 库，媒体产物在 work 卷，模型缓存可跨容器重用。原本地库与文件不会自动导入。停止运行用同一 compose 文件执行 `down`；卷中保存结果和课程记录。公开部署时配置 HTTPS。使用 `start-all.sh` 可以独立运行原有本地模式。
+
+## 消息投递
+平台配置使用 RocketMQ。新任务和待投递记录在同一 MySQL 事务中创建，Broker 确认后才删除待投递记录。重复消息会再次检查数据库任务状态。Broker 暂时不可用时记录保留，worker 定期从数据库补捞可运行任务。

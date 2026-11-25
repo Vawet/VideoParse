@@ -35,16 +35,19 @@ class JobRunner {
     }
     @Scheduled(fixedDelayString="${WORKER_POLL_MS:1500}")
     public void poll() throws SQLException {
-        for(String id:jobs.candidates()) {
-            try(var c=db.getConnection()) {
-                if(!lock(c,"acquire",id)) continue;
-                try {
-                    if(jobs.begin(id)==0) continue;
-                    execute(id,jobs.get(id).videoId(),c);
-                } finally {lock(c,"release",id);}
-            }
-            return;
-        }
+        for(String id:jobs.candidates()) if(process(id)) return;
+    }
+    private final java.util.concurrent.locks.Lock capacity=new java.util.concurrent.locks.ReentrantLock();
+
+    boolean process(String id) throws SQLException {
+        if(!capacity.tryLock()) return false;
+        try(var c=db.getConnection()) {
+            if(!lock(c,"acquire",id)) return false;
+            try {
+                if(jobs.begin(id)==1) execute(id,jobs.get(id).videoId(),c);
+            } finally {lock(c,"release",id);}
+            return true;
+        } finally {capacity.unlock();}
     }
     private void execute(String id,String video,Connection lock) throws SQLException {
         var pb=new ProcessBuilder(python,"-m","app.platform_worker",id,video);

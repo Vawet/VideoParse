@@ -10,6 +10,8 @@ public interface JobMapper {
 
     @Insert("INSERT INTO vp_job(id,video_id,active_video,status) VALUES(#{id},#{video},#{video},'queued') ON DUPLICATE KEY UPDATE id=id")
     void submit(String id, String video);
+    @Insert("INSERT INTO vp_dispatch(job_id) VALUES(#{id})")
+    void enqueue(String id);
     @Select("SELECT id FROM vp_job WHERE active_video=#{video} FOR UPDATE")
     String active(String video);
     @Select("SELECT id,video_id,status,error FROM vp_job WHERE id=#{id}")
