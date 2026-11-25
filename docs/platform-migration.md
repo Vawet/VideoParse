@@ -45,6 +45,21 @@ docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml exe
 
 升级已有 Compose 配置时先运行 `python3 infra/platform/configure.py --add-graph`，再启动平台。独立运行 Spring 时设置 `NEO4J_URL`（例如 `http://127.0.0.1:7474`）、`NEO4J_USER` 和 `NEO4J_PASSWORD`。图记录与证据在同一 Neo4j 事务内创建，MySQL 在完成任务的事务中切换当前版本。旧工作区仍可读取。备份应一并保留 MySQL、Neo4j 和媒体卷。
 
+## 消息队列与图发布恢复
+
+解析使用 RocketMQ 的 `VideoParseAnalysis` 主题和 `vp-analysis` 消费组。媒体产物保存后，Spring 在一个 MySQL 事务中把任务置为 `publishing` 并登记待发送的图发布消息。`VideoParseResults` 主题由 `vp-results` 消费组独立处理，消息体均为任务 ID。图库慢时，其他视频仍可解析。同一视频在发布期间提交会返回当前任务 ID。所有实例应共用工作卷、数据库及相同的图配置。
+
+图库写入失败后，任务分别等待 2、4、8、16 秒再尝试，连续 5 次失败后进入 `error` 并保留磁盘产物。退避时间记录在 MySQL。消费者重启或消息重复时检查持久化阶段，图提交回执丢失时可重投。两阶段也会从 MySQL 扫描待办。`WORKER_POLL_MS` 控制解析补捞间隔，`PUBLISH_POLL_MS` 默认与其相同。SSE 的 `progress` 事件报告写图进度，发布成功后才发送 `end/done`。
+
+已有结果或发布失败的视频可按视频 ID 从工作卷补发。平台须已配置 Neo4j、执行 V6 迁移，且 `DATA_ROOT/outputs/<视频ID>_result.json` 存在。在 Compose 环境从仓库根目录执行以下命令。
+
+```bash
+docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml exec platform \
+  python -m app.publish_results 视频ID
+```
+
+命令返回任务 ID，可用 `GET /api/tasks/<任务ID>` 查看进度。有活动任务时复用该任务。新建的补发任务仅读取已有结果及证据。早期工作区仅有结果 JSON 时保存没有证据节点的版本。升级前先暂停新提交，等活动任务结束再替换所有 worker。旧版 worker 无法识别发布阶段。回退时同样先排空任务，并保留 MySQL、Neo4j 和媒体卷备份。
+
 ## 迁移已有学习数据
 
 先停止旧环境的写入，备份 SQLite 和媒体目录。目标 MySQL 应已运行 Flyway 并且学习表为空。设置指向目标库的 `DATABASE_URL` 后，从 `后端/` 运行下列命令。
@@ -60,4 +75,5 @@ python -m app.migrate_learning /只读快照/videoparse.db
 - **任务和界面。** 独立环境使用真实 MySQL、Redis、MinIO、RocketMQ 和 Qdrant。8 个并发提交只创建一个活动任务。解析一段 8 秒无声 MP4 期间强制结束 JVM，重启后同一任务复用了阶段检查点。浏览器验证上传、进度、证据检索、答题判分、打开复习和讲授，以及刷新重开；示例八个标签与 PDF/PNG 导出菜单均可访问。在生产构建中，浏览器已逐张验证示例封面、讲义插图及 PPT 的缩略图和放大图。FFmpeg 和存储使用真实实现，讲义与问答使用本地模型替身。
 - **字幕检索。** 同一视频的 5 道字面题，Java BM25 和平台混合检索的 Hit@1 均为 5/5。另 7 道换说法题，Java BM25 的 Hit@1、Hit@3 为 4/7、5/7；接入真实本地 BGE 和 Qdrant 后为 5/7、6/7。原 Python 混合检索为 6/7、6/7。题集只覆盖一个短视频，不能据此推断长视频 OCR 或最终答案的准确率。
 - **复测入口。** 对已结束任务运行 `python3 platform/checks/replay.py http://localhost:8088/api 任务ID`，可核查事件流 MIME 类型、递增事件 ID 和续读。在独立测试工作区将 `后端/app/tests/eval/golden.json` 放到 `outputs/eval-video_work/transcript.json`，从 `后端/` 运行 `python -m app.tests.eval.retrieval_eval --platform-api http://localhost:8088/api`，可测 Spring 实际检索结果。
-- **部署边界。** 此前已检查加入 Neo4j 前的 Compose 八个服务配置，正常打包 Java 和前端。整套容器构建在拉取 Docker Hub 基础镜像时网络超时，尚未验证全容器冷启动。商业模型效果、生产并发和最低服务器内存也未实测。
+- **图发布。** 隔离工作区使用真实 RocketMQ、MySQL 和 Neo4j，媒体进程使用固定测试数据。在图库短时故障、提交后丢回执、重复消息和服务重启场景中，同一任务只执行一次媒体解析，图里保留一组证据。连续五次写入失败后成功从工作区补发。单独关闭 RocketMQ 消费后，MySQL 补捞也能完成发布。
+- **部署边界。** 已用 Compose v2 验证含 Neo4j 的九个服务配置，正常打包 Java 和前端。整套容器构建在拉取 Docker Hub 基础镜像时网络超时，尚未验证全容器冷启动。商业模型效果、生产并发和最低服务器内存也未实测。

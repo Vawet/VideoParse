@@ -2,11 +2,10 @@ package org.videoparse;
 
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.*;
 import org.apache.rocketmq.client.producer.*;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.Message;
 import org.slf4j.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,55 +14,87 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** The SQL transaction owns job identity; MQ is allowed to deliver a job more than once. */
+/** MySQL owns the stage transitions. A broker acknowledgement can race a retry or SQL recovery. */
 @Component
 @ConditionalOnProperty(name="vp.mq.enabled",havingValue="true")
 class JobDispatch {
-    private static final String TOPIC="VideoParseAnalysis";
-    private final Logger log=LoggerFactory.getLogger(getClass());
+    private static final String PARSE_TOPIC = "VideoParseAnalysis";
+    private static final String RESULT_TOPIC = "VideoParseResults";
+    private final Logger log = LoggerFactory.getLogger(getClass());
     private final JdbcClient db;
     private final JobRunner runner;
-    private final String nameserver;
+    private final AnalysisGraph graph;
+    private final String nameserver, prefix;
     private DefaultMQProducer producer;
-    private DefaultMQPushConsumer consumer;
-    JobDispatch(JdbcClient db, JobRunner runner, @Value("${ROCKETMQ_NAMESERVER}") String nameserver) {
-        this.db=db;this.runner=runner;this.nameserver=nameserver;
+    private DefaultMQPushConsumer parser, publisher;
+
+    JobDispatch(JdbcClient db, JobRunner runner, AnalysisGraph graph,
+                @Value("${ROCKETMQ_NAMESERVER}") String nameserver, @Value("${ROCKETMQ_PREFIX:}") String prefix) {
+        this.db=db; this.runner=runner; this.graph=graph; this.nameserver=nameserver; this.prefix=prefix;
     }
+
+    private DefaultMQPushConsumer subscribe(String group, String topic) throws Exception {
+        var consumer = new DefaultMQPushConsumer(prefix + group);
+        consumer.setNamesrvAddr(nameserver);
+        consumer.setConsumeThreadMin(1);
+        consumer.setConsumeThreadMax(1);
+        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
+        consumer.setConsumeTimeout(180);
+        consumer.setConsumeMessageBatchMaxSize(1);
+        try {
+            consumer.subscribe(prefix + topic, "*");
+            consumer.registerMessageListener((MessageListenerConcurrently)(messages,ctx) -> {
+                String id = new String(messages.getFirst().getBody(), StandardCharsets.UTF_8);
+                if (!id.matches("[0-9a-f]{32}")) return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+                try {
+                    boolean accepted = topic.equals(PARSE_TOPIC) ? runner.process(id) : runner.publish(id);
+                    return accepted ? ConsumeConcurrentlyStatus.CONSUME_SUCCESS : ConsumeConcurrentlyStatus.RECONSUME_LATER;
+                } catch (Exception e) {
+                    log.warn("消费失败 {} {}", topic,id,e);
+                    return ConsumeConcurrentlyStatus.RECONSUME_LATER;
+                }
+            });
+            consumer.start();
+            return consumer;
+        } catch (Exception e) { consumer.shutdown(); throw e; }
+    }
+
     private synchronized void connect() throws Exception {
-        if(producer==null) {
-            var p=new DefaultMQProducer("vp-dispatch");
-            p.setNamesrvAddr(nameserver); p.setSendMsgTimeout(3000);
-            try {p.start();producer=p;} catch(Exception e){p.shutdown();throw e;}
+        if (producer == null) {
+            var p = new DefaultMQProducer(prefix + "vp-dispatch");
+            p.setNamesrvAddr(nameserver);
+            p.setSendMsgTimeout(3000);
+            try { p.start(); producer=p; } catch (Exception e) { p.shutdown(); throw e; }
         }
-        if(consumer==null) {
-            var c=new DefaultMQPushConsumer("vp-analysis");
-            c.setNamesrvAddr(nameserver);c.setConsumeThreadMin(1);c.setConsumeThreadMax(1);
-            c.setConsumeTimeout(180);c.setConsumeMessageBatchMaxSize(1);
-            try {
-                c.subscribe(TOPIC,"*");
-                c.registerMessageListener((MessageListenerConcurrently)(messages,ctx)-> {
-                    String id=new String(messages.getFirst().getBody(),StandardCharsets.UTF_8);
-                    if(!id.matches("[0-9a-f]{32}")) return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-                    try {return runner.process(id)?ConsumeConcurrentlyStatus.CONSUME_SUCCESS:ConsumeConcurrentlyStatus.RECONSUME_LATER;}
-                    catch(Exception e){log.warn("消费失败 {}",id,e);return ConsumeConcurrentlyStatus.RECONSUME_LATER;}
-                });
-                c.start(); consumer=c;
-            } catch(Exception e){c.shutdown();throw e;}
-        }
+        if (parser == null) parser = subscribe("vp-analysis", PARSE_TOPIC);
+        if (graph.enabled() && publisher == null) publisher = subscribe("vp-results", RESULT_TOPIC);
     }
+
+    record Dispatch(String jobId, String stage, int attempt) {}
+
     @Scheduled(fixedDelayString="${MQ_DISPATCH_MS:2000}")
     void send() {
         try {
             connect();
-            for(String id:db.sql("SELECT job_id FROM vp_dispatch ORDER BY created_at LIMIT 32").query(String.class).list()) {
-                var result=producer.send(new Message(TOPIC,"parse",id,id.getBytes(StandardCharsets.UTF_8)));
-                if(result.getSendStatus()!=SendStatus.SEND_OK) break;
-                db.sql("DELETE FROM vp_dispatch WHERE job_id=?").param(id).update();
+            var pending = db.sql("""
+                SELECT d.job_id,d.stage,d.attempt FROM vp_dispatch d JOIN vp_job j ON j.id=d.job_id
+                WHERE d.stage='parse' OR j.publish_after<=CURRENT_TIMESTAMP(3)
+                ORDER BY d.created_at LIMIT 32
+                """).query(Dispatch.class).list();
+            for (var row : pending) {
+                String topic = prefix + (row.stage().equals("parse") ? PARSE_TOPIC : RESULT_TOPIC);
+                var message = new Message(topic,row.stage(),row.jobId(),row.jobId().getBytes(StandardCharsets.UTF_8));
+                if (producer.send(message).getSendStatus() == SendStatus.SEND_OK) {
+                    db.sql("DELETE FROM vp_dispatch WHERE job_id=? AND stage=? AND attempt=?")
+                        .params(row.jobId(), row.stage(), row.attempt()).update();
+                }
             }
-        } catch(Exception e){log.warn("消息服务暂不可用，任务已保存在 MySQL: {}",e.getMessage());}
+        } catch (Exception e) { log.warn("消息服务暂不可用，任务已保存在 MySQL: {}", e.getMessage()); }
     }
+
     @PreDestroy synchronized void close() {
-        if(consumer!=null) consumer.shutdown();
-        if(producer!=null) producer.shutdown();
+        if (publisher!=null) publisher.shutdown();
+        if (parser!=null) parser.shutdown();
+        if (producer!=null) producer.shutdown();
     }
 }

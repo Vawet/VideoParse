@@ -42,20 +42,32 @@ class AnalysisResults {
     JsonNode result(String video) throws IOException {
         var file = resultFile(video);
         var head = published(video);
-        if (head.isPresent() && graph.enabled()) return graph.result(head.get());
+        if (head.isPresent() && graph.enabled()) {
+            try { return graph.result(head.get()); }
+            catch (IOException ex) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"暂时无法读取已发布结果",ex); }
+        }
         return Files.isRegularFile(file) ? json.readTree(file.toFile()) : null;
     }
 
     List<EvidenceCorpus.Passage> evidence(String video) throws IOException {
         resultFile(video);
         var head = published(video);
-        if (head.isPresent() && graph.enabled()) return graph.passages(head.get());
+        if (head.isPresent() && graph.enabled()) {
+            try { return graph.passages(head.get()); }
+            catch (IOException ex) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"暂时无法读取已发布证据",ex); }
+        }
         return workspace.load(video);
     }
 
     void publish(String job, String video) throws IOException {
         var result = json.readTree(resultFile(video).toFile());
         if (result == null || !result.isObject()) throw new IOException("解析结果格式无效");
-        graph.store(job,video,result,workspace.load(video));
+        var dir = outputs.resolve(video + "_work");
+        List<EvidenceCorpus.Passage> passages = List.of();
+        if (!Files.notExists(dir)) {
+            if (!Files.isDirectory(dir)) throw new IOException("无法读取证据工作目录");
+            passages = workspace.load(video);
+        }
+        graph.store(job,video,result,passages);
     }
 }

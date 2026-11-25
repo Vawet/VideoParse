@@ -249,8 +249,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
               typeof obs.segments === "number" ? `处理 ${obs.segments} 个片段` :
               typeof obs.sections === "number" ? `生成 ${obs.sections} 个章节` : "服务端已完成此步骤";
             setStageDetail(prev => ({...prev,[step]: obs.resumed ? detail+"（复用检查点）" : detail}));
-            run.markLive(step);
+            run.markLive(step === "verify" ? "notes" : step);
           }
+        } else if (event.type === "progress" && event.stage === "publishing") {
+          liveStepRef.current = "verify";
+          run.markLive("notes");
+          const detail = event.retry_in_seconds ? `${event.text}（${event.retry_in_seconds} 秒）` : event.text;
+          setStageDetail(prev => ({ ...prev, verify: detail }));
         } else if (event.type === "error") {
           liveErrorRef.current = event.text;
         } else if (event.type === "end") {
@@ -263,6 +268,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
               if (sessionRef.current !== session) return;
               setRawResult(result);
               setAvailable(ALL_RESULTS);
+              setStageDetail(prev => ({ ...prev, verify: "解析结果已就绪" }));
               run.finishLive();
             })
             .catch((error) => run.failLive("verify", `读取解析结果失败:${errorMessage(error)}`));
@@ -503,7 +509,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     lecture,
     duration,
     progress: run.progress,
-    steps: source === "live" ? PARSE_STEPS.map(step => ({...step,detail:"正在处理…",doneDetail:stageDetail[step.id] ?? "已完成"})) : PARSE_STEPS,
+    steps: source === "live" ? PARSE_STEPS.map(step => ({...step,detail:stageDetail[step.id] ?? "正在处理…",doneDetail:stageDetail[step.id] ?? "已完成"})) : PARSE_STEPS,
     recent, reopen,
     stepStatus: (step: ParseStep) => run.stepStatus(step, run.done),
     activeStep,

@@ -10,18 +10,29 @@ public interface JobMapper {
 
     @Insert("INSERT INTO vp_job(id,video_id,active_video,status) VALUES(#{id},#{video},#{video},'queued') ON DUPLICATE KEY UPDATE id=id")
     void submit(String id, String video);
-    @Insert("INSERT INTO vp_dispatch(job_id) VALUES(#{id})")
-    void enqueue(String id);
+    @Insert("INSERT INTO vp_dispatch(job_id,stage,attempt) VALUES(#{id},#{stage},#{attempt}) ON DUPLICATE KEY UPDATE attempt=#{attempt}")
+    void enqueue(String id,String stage,int attempt);
+    @Delete("DELETE FROM vp_dispatch WHERE job_id=#{id}")
+    void clearDispatch(String id);
     @Select("SELECT id FROM vp_job WHERE active_video=#{video} FOR UPDATE")
     String active(String video);
     @Select("SELECT id,video_id,status,error FROM vp_job WHERE id=#{id}")
     Job get(String id);
-    @Select("SELECT id FROM vp_job WHERE active_video IS NOT NULL ORDER BY created_at LIMIT 128")
+    @Select("SELECT id FROM vp_job WHERE status IN ('queued','running') ORDER BY created_at LIMIT 128")
     List<String> candidates();
-    @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND active_video IS NOT NULL")
+    @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND status IN ('queued','running')")
     int begin(String id);
-    @Update("UPDATE vp_job SET status=#{status},error=#{error},active_video=NULL WHERE id=#{id} AND active_video IS NOT NULL")
-    int finish(String id,String status,String error);
+    @Update("UPDATE vp_job SET status='publishing' WHERE id=#{id} AND status='running'")
+    int mediaReady(String id);
+    @Select("SELECT id FROM vp_job WHERE status='publishing' AND publish_after<=CURRENT_TIMESTAMP(3) ORDER BY publish_after LIMIT 128")
+    List<String> publications();
+    record Publication(String videoId,int attempts) {}
+    @Select("SELECT video_id,publish_attempts AS attempts FROM vp_job WHERE id=#{id} AND status='publishing' AND publish_after<=CURRENT_TIMESTAMP(3)")
+    Publication publication(String id);
+    @Update("UPDATE vp_job SET publish_attempts=#{attempt},publish_after=TIMESTAMPADD(SECOND,#{delay},CURRENT_TIMESTAMP(3)) WHERE id=#{id} AND status='publishing' AND publish_attempts=#{attempt}-1")
+    int recordFailure(String id,int attempt,int delay);
+    @Update("UPDATE vp_job SET status=#{status},error=#{error},active_video=NULL WHERE id=#{id} AND status=#{expected}")
+    int finish(String id,String expected,String status,String error);
     @Insert("INSERT INTO vp_graph_head(video_id,job_id) VALUES(#{video},#{job}) ON DUPLICATE KEY UPDATE job_id=#{job}")
     void publishHead(String video,String job);
     @Delete("DELETE FROM vp_graph_head WHERE video_id=#{video}")

@@ -42,14 +42,48 @@ class JobRunner {
     public void poll() throws SQLException {
         for(String id:jobs.candidates()) if(process(id)) return;
     }
-    private final java.util.concurrent.locks.Lock capacity=new java.util.concurrent.locks.ReentrantLock();
+    @Scheduled(fixedDelayString="${PUBLISH_POLL_MS:${WORKER_POLL_MS:1500}}")
+    public void pollPublications() throws SQLException {
+        if (!graph.enabled()) return;
+        for (String id : jobs.publications()) if (publish(id)) return;
+    }
+
+    private final java.util.concurrent.locks.Lock parseCapacity=new java.util.concurrent.locks.ReentrantLock();
+    private final java.util.concurrent.locks.Lock publishCapacity=new java.util.concurrent.locks.ReentrantLock();
+
+    boolean publish(String id) throws SQLException {
+        if (!graph.enabled()) return false;
+        return withJobLock(id, publishCapacity, connection -> {
+            var task = jobs.publication(id);
+            if (task == null) return;
+            try {
+                results.publish(id, task.videoId());
+            } catch (java.io.IOException e) {
+                if (Thread.currentThread().isInterrupted() || !connection.isValid(3))
+                    throw new SQLException("发布会话中断，保留任务", e);
+                log.warn("图发布失败 {} (第 {} 次)", id, task.attempts()+1, e);
+                service.publicationFailed(id, task.attempts()+1);
+                return;
+            }
+            service.finish(id, "publishing", null);
+        });
+    }
+
+    @FunctionalInterface
+    private interface LockedJob { void run(Connection connection) throws SQLException; }
 
     boolean process(String id) throws SQLException {
+        return withJobLock(id, parseCapacity, connection -> {
+            if (jobs.begin(id)==1) execute(id,jobs.get(id).videoId(),connection);
+        });
+    }
+
+    private boolean withJobLock(String id, java.util.concurrent.locks.Lock capacity, LockedJob job) throws SQLException {
         if(!capacity.tryLock()) return false;
         try(var c=db.getConnection()) {
             if(!lock(c,"acquire",id)) return false;
             try {
-                if(jobs.begin(id)==1) execute(id,jobs.get(id).videoId(),c);
+                job.run(c);
             } finally {lock(c,"release",id);}
             return true;
         } finally {capacity.unlock();}
@@ -66,18 +100,18 @@ class JobRunner {
                     catch(SQLException ex){throw new IllegalStateException(ex);}
                     jobs.event(id,event);
                 });
-                if(graph.enabled()) results.publish(id,video);
-                service.finish(id,null);
-            } catch(InterruptedException ex){Thread.currentThread().interrupt();}
+            } catch(InterruptedException ex){Thread.currentThread().interrupt();return;}
               catch(Exception ex){
                 if(!lock.isValid(3)) throw new SQLException("丢失任务锁，保留待恢复任务",ex);
                 log.error("解析失败 {}",id,ex);
-                service.finish(id,"解析失败："+ex.getClass().getSimpleName());
+                service.finish(id,"running","解析失败："+ex.getClass().getSimpleName());
+                return;
             }
+            service.mediaReady(id);
             return;
         }
         Process child;
-        try {child=pb.start();} catch(java.io.IOException e) {service.finish(id,"无法启动解析进程");return;}
+        try {child=pb.start();} catch(java.io.IOException e) {service.finish(id,"running","无法启动解析进程");return;}
         try(var readers=Executors.newVirtualThreadPerTaskExecutor()) {
             var reader=readers.submit(() -> {
                 try(var stream=child.inputReader(StandardCharsets.UTF_8)) {
@@ -95,10 +129,8 @@ class JobRunner {
                     if(!lock.isValid(3)) throw new SQLException("解析任务数据库连接中断");
                 }
                 reader.get();
-                if(child.exitValue()==0 && graph.enabled()) {
-                    try { results.publish(id,video); } catch(java.io.IOException e){service.finish(id,"写入图数据库失败");return;}
-                }
-                service.finish(id,child.exitValue()==0?null:"解析进程失败，退出码 "+child.exitValue());
+                if(child.exitValue()==0) service.mediaReady(id);
+                else service.finish(id,"running","解析进程失败，退出码 "+child.exitValue());
             } catch(InterruptedException e) {Thread.currentThread().interrupt();}
               catch(ExecutionException e) {log.error("事件记录失败，保留可恢复任务 {}",id,e);}
             finally {if(child.isAlive()) child.destroyForcibly();}

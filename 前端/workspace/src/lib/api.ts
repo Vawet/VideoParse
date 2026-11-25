@@ -84,6 +84,7 @@ export async function startAnalyze(filepath: string, videoId: string) {
 }
 
 export type AgentEvent =
+  | { type: "progress"; stage: "publishing"; text: string; retry_in_seconds?: number }
   | { type: "thought"; step: number; text: string }
   | { type: "tool_start"; step: number; tool: string; args?: unknown }
   | { type: "tool_end"; step: number; tool: string; ok: boolean; observation?: unknown }
