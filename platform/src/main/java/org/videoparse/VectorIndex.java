@@ -9,21 +9,23 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 class VectorIndex {
     private final ObjectMapper json;
+    private final DataSource db;
     private final String endpoint,key,collection;
     private final LocalEmbeddings local;
     private final OpenAiEmbeddingModel model;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final Semaphore indexing=new Semaphore(1);
-    VectorIndex(ObjectMapper json,LocalEmbeddings local,@Value("${QDRANT_URL:}") String endpoint,@Value("${QDRANT_API_KEY:}") String key,
+    VectorIndex(ObjectMapper json,LocalEmbeddings local,DataSource db,@Value("${QDRANT_URL:}") String endpoint,@Value("${QDRANT_API_KEY:}") String key,
                 @Value("${EMBEDDING_API_KEY:}") String apiKey,@Value("${EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}") String base,
                 @Value("${PLATFORM_EMBED_MODEL:BAAI/bge-m3}") String name) {
-        this.json=json;this.endpoint=endpoint;this.key=key;this.local=local;
+        this.json=json;this.endpoint=endpoint;this.key=key;this.local=local;this.db=db;
         String identity=apiKey.isBlank() ? "local|"+local.modelName() : base+"|"+name;
         this.collection="vp_"+UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString().replace("-","");
         this.model=apiKey.isBlank() || endpoint.isBlank()?null:OpenAiEmbeddingModel.builder()
@@ -85,7 +87,7 @@ class VectorIndex {
     }
 
     private void indexVideoBatch(String video, String revision, List<EvidenceCorpus.Passage> batch,
-                                boolean partiallyIndexed) throws Exception {
+                                boolean partiallyIndexed, boolean createSpace) throws Exception {
         var missing = new LinkedHashMap<String,EvidenceCorpus.Passage>();
         for (var doc : batch) {
             String key = video + "/" + revision + "/" + doc.id();
@@ -101,6 +103,7 @@ class VectorIndex {
         var texts = missing.values().stream().map(EvidenceCorpus.Passage::text)
             .map(s -> s.substring(0, Math.min(s.length(), 4000))).toList();
         var embeddings = embed(texts, false);
+        if (createSpace) createCollection(embeddings[0].length);
         var points = new ArrayList<Object>();
         for (var entry : missing.entrySet()) {
             points.add(Map.of("id",entry.getKey(), "vector",embeddings[points.size()], "payload",
@@ -109,28 +112,41 @@ class VectorIndex {
         require(call("PUT", "/points?wait=true", Map.of("points",points)));
     }
 
+    private long videoPointCount(Map<String,?> filter) throws Exception {
+        var response = call("POST","/points/count",Map.of("filter",filter,"exact",true));
+        if (response.statusCode() == 404) return -1;
+        var count = require(response).path("count");
+        if (!count.isIntegralNumber() || count.asLong() < 0) throw new java.io.IOException("Qdrant 证据计数无效");
+        return count.asLong();
+    }
+
+    private boolean ensureVideoIndexed(String video, String rev, List<EvidenceCorpus.Passage> docs,
+                                      Map<String,?> filter) throws Exception {
+        if (videoPointCount(filter) == docs.size()) return true;
+        if (!indexing.tryAcquire()) return false;
+        String lockName = "vp:vector:" + UUID.nameUUIDFromBytes((collection+"/"+video+"/"+rev).getBytes(StandardCharsets.UTF_8));
+        try (var connection = db.getConnection(); var lock = MySqlLock.tryAcquire(connection, lockName)) {
+            if (lock == null) return false;
+            long count = videoPointCount(filter); // Another instance may have finished before this claim.
+            if (count == docs.size()) return true;
+            for (int i = 0; i < docs.size(); i += 24) {
+                if (!connection.isValid(3)) throw new java.io.IOException("向量索引会话已断开");
+                indexVideoBatch(video, rev, docs.subList(i, Math.min(i+24, docs.size())), count>0, i==0 && count<0);
+            }
+            return true;
+        } finally {
+            indexing.release();
+        }
+    }
+
     List<Integer> ranked(String video,EvidenceCorpus.Index index,String q) throws Exception {
         var docs=index.passages();
         if(endpoint.isBlank() || docs.isEmpty()) return List.of();
         String rev=index.vectorRevision(json);
         var match=List.of(condition("video",video),condition("revision",rev));
         var filter=Map.of("must",match);
-        var info=call("GET","",null);
-        if(info.statusCode()!=404) require(info);
+        if (!ensureVideoIndexed(video,rev,docs,filter)) return List.of();
         float[] query=embed(List.of(q),true)[0];
-        if(info.statusCode()==404) {
-            createCollection(query.length);
-        }
-        var count=require(call("POST","/points/count",Map.of("filter",filter,"exact",true))).path("count").asInt();
-        if(count!=docs.size()) {
-            if(!indexing.tryAcquire()) return List.of();
-            try {
-                for(int i=0;i<docs.size();i+=24) {
-                    var batch=docs.subList(i,Math.min(i+24,docs.size()));
-                    indexVideoBatch(video,rev,batch,count>0);
-                }
-            } finally {indexing.release();}
-        }
         var found=require(call("POST","/points/query",Map.of("query",query,"filter",filter,"limit",16,"score_threshold",0.4,"with_payload",true)));
         var ids=new ArrayList<Integer>();
         for(var point:found.path("points")) {

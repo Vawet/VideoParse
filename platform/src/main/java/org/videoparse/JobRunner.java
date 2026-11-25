@@ -31,13 +31,6 @@ class JobRunner {
         this.results=results;this.graph=graph;this.engine=engine;this.flow=flow;this.db=db; this.jobs=jobs; this.service=service; this.json=json;
         this.python=python; this.directory=directory; this.data=data; this.publicBase=publicBase;
     }
-    private boolean lock(Connection c, String function, String id) throws SQLException {
-        String sql=function.equals("acquire")?"SELECT GET_LOCK(?,0)":"SELECT RELEASE_LOCK(?)";
-        try(var s=c.prepareStatement(sql)) {
-            s.setString(1,"videoparse:"+id);
-            try(var r=s.executeQuery()) {return r.next() && r.getInt(1)==1;}
-        }
-    }
     @Scheduled(fixedDelayString="${WORKER_POLL_MS:1500}")
     public void poll() throws SQLException {
         for(String id:jobs.candidates()) if(process(id)) return;
@@ -80,11 +73,9 @@ class JobRunner {
 
     private boolean withJobLock(String id, java.util.concurrent.locks.Lock capacity, LockedJob job) throws SQLException {
         if(!capacity.tryLock()) return false;
-        try(var c=db.getConnection()) {
-            if(!lock(c,"acquire",id)) return false;
-            try {
-                job.run(c);
-            } finally {lock(c,"release",id);}
+        try(var c=db.getConnection(); var lock=MySqlLock.tryAcquire(c,"videoparse:"+id)) {
+            if(lock==null) return false;
+            job.run(c);
             return true;
         } finally {capacity.unlock();}
     }
