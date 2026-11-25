@@ -1,6 +1,9 @@
 """Read public Bilibili video pages, bounded progressive streams and public comment samples."""
 import json
 import re
+import subprocess
+import tempfile
+from pathlib import Path
 import time
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
@@ -79,23 +82,8 @@ def _media_url(raw):
     return urlunsplit(("https", p.hostname, p.path, p.query, ""))
 
 
-def download(url, target):
-    key, page = identify(url)
-    meta = _api("web-interface/view", **({"bvid": key} if key.startswith("BV") else {"aid": key[2:]}))
-    part = next((p for p in meta["pages"] if p["page"] == page), None)
-    if not part:
-        raise SourceError("视频没有该分 P")
-    bv = meta["bvid"]
-    info = _api("player/playurl", bvid=bv, cid=part["cid"], fnval=1, qn=32)
-    streams = info.get("durl") or []
-    if len(streams) != 1:
-        raise SourceError("该视频暂未提供可直接导入的公开音视频流")
-    item = streams[0]
-    size = item.get("size", 0)
-    if not 0 < size <= MAX_MEDIA:
-        raise SourceError("视频大小未知或超过 2 GiB 上限")
-    page_url = "https://www.bilibili.com/video/" + bv + "/"
-    deadline = time.monotonic() + 145
+def _download_stream(item, target, page_url, deadline):
+    size = item["size"]
     for raw in (item["url"], *(item.get("backup_url") or [])):
         try:
             media = _media_url(raw)
@@ -116,12 +104,55 @@ def download(url, target):
                         raise SourceError("视频大小与平台声明不符")
                     output.write(block)
                 if total == size:
-                    title = meta["title"] + (" · " + part["part"] if len(meta["pages"]) > 1 else "")
-                    return {"title": title, "extension": extension, "aid": meta["aid"], "bvid": bv, "page": page}
+                    return extension
         except (OSError, SourceError):
             if time.monotonic() >= deadline:
                 break
     raise SourceError("未能下载完整的公开媒体，请稍后重试")
+
+
+def download(url, target):
+    key, page = identify(url)
+    meta = _api("web-interface/view", **({"bvid": key} if key.startswith("BV") else {"aid": key[2:]}))
+    part = next((p for p in meta["pages"] if p["page"] == page), None)
+    if not part:
+        raise SourceError("视频没有该分 P")
+    bv = meta["bvid"]
+    info = _api("player/playurl", bvid=bv, cid=part["cid"], fnval=1, qn=32)
+    streams = info.get("durl") or []
+    if not streams:
+        raise SourceError("该视频暂未提供可直接导入的公开音视频流")
+    sizes = [item.get("size") for item in streams]
+    if any(type(size) is not int or size < 1 for size in sizes) or sum(sizes) > MAX_MEDIA:
+        raise SourceError("视频大小未知或超过 2 GiB 上限")
+    page_url = "https://www.bilibili.com/video/" + bv + "/"
+    deadline = time.monotonic() + 145
+    if len(streams) == 1:
+        extension = _download_stream(streams[0], target, page_url, deadline)
+    else:
+        # The concat list contains only locally generated basenames. Remote locations never reach FFmpeg.
+        with tempfile.TemporaryDirectory(dir=Path(target).parent) as tmp:
+            directory = Path(tmp)
+            names = []
+            for index, item in enumerate(streams):
+                filename = f"part-{index}"
+                _download_stream(item, directory / filename, page_url, deadline)
+                names.append(f"file '{filename}'")
+            listing = directory / "parts.txt"
+            listing.write_text("\n".join(names), encoding="utf-8")
+            try:
+                subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file",
+                                "-f", "concat", "-safe", "1", "-i", str(listing),
+                                "-c", "copy", "-f", "mp4", str(target)], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=max(1, deadline - time.monotonic()))
+            except (OSError, subprocess.SubprocessError):
+                raise SourceError("分段媒体合并失败或耗时过长") from None
+            if not 0 < Path(target).stat().st_size <= MAX_MEDIA:
+                raise SourceError("合并后的视频超出导入范围")
+            extension = "mp4"
+    title = meta["title"] + (" · " + part["part"] if len(meta["pages"]) > 1 else "")
+    return {"title": title, "extension": extension, "aid": meta["aid"], "bvid": bv, "page": page}
 
 
 def comments(aid):
