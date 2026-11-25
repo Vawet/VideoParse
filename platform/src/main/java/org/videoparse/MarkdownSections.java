@@ -31,7 +31,7 @@ final class MarkdownSections {
                     out.flush();
                     int level=h.group(1).length()-1;
                     Arrays.fill(path,level,6,null);
-                    path[level]=Objects.toString(h.group(2),"").replaceFirst("[ \\t]+#+[ \\t]*$","").strip();
+                    path[level]=title(h.group(2));
                     String title=String.join(" › ",Arrays.stream(path).filter(Objects::nonNull).toList());
                     out.heading=cut(title,480);
                 }
@@ -42,25 +42,38 @@ final class MarkdownSections {
         return out.chunks;
     }
 
+    private static String title(String text) {
+        String value=Objects.toString(text,"").stripTrailing();
+        int marker=value.length();
+        while (marker>0 && value.charAt(marker-1)=='#') marker--;
+        if (marker<value.length() && (marker==0 || value.charAt(marker-1)==' ' || value.charAt(marker-1)=='\t'))
+            value=value.substring(0,marker);
+        return cut(value.strip(),480);
+    }
+
+    private static int sliceEnd(String text,int offset,int max) {
+        int end=Math.min(text.length(),offset+max);
+        return end<text.length() && Character.isHighSurrogate(text.charAt(end-1)) ? end-1 : end;
+    }
+
     private static String cut(String s,int max) {
-        int n=Math.min(s.length(),max);
-        if (n<s.length() && n>0 && Character.isHighSurrogate(s.charAt(n-1))) n--;
-        return s.substring(0,n);
+        return s.substring(0,sliceEnd(s,0,max));
     }
 
     private void line(String text,int number) {
         if (!body.isEmpty() && body.length()+text.length()+1>LIMIT) flush();
         if (body.isEmpty() && text.isBlank()) return;
-        while (text.length()>LIMIT) {
-            String part=cut(text,LIMIT);
+        int offset=0;
+        while (text.length()-offset>LIMIT) {
+            int next=sliceEnd(text,offset,LIMIT);
             start=end=number;
-            body.append(part);
+            body.append(text,offset,next);
             flush();
-            text=text.substring(part.length());
+            offset=next;
         }
         if (body.isEmpty()) start=number;
         else body.append('\n');
-        body.append(text);
+        body.append(text,offset,text.length());
         end=number;
     }
 

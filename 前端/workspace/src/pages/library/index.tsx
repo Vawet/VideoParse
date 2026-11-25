@@ -8,7 +8,8 @@ type Document = { id: string; name: string; chunks: number; indexedChunks: numbe
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
 type Answer = { source: "web"; answer: string; web_sources: WebSource[] } |
   { source: "document"; answer: string; generated: boolean; used_vectors: boolean; hits: Passage[] };
-type Reading = { doc: Document; lines: string[]; from: number; to: number };
+type Reading = { doc: Document; lines: string[]; from: number; to: number; page: number };
+const PAGE_LINES = 160;
 const pending = (doc: Document) => doc.indexState === "pending" || doc.indexState === "indexing";
 
 async function api<T>(path = "", options?: RequestInit): Promise<T> {
@@ -51,7 +52,8 @@ export default function Library() {
     const generation = ++readId.current;
     try {
       const data = await api<{document: Document; markdown: string}>("/" + id);
-      if (generation === readId.current) setReading({doc: data.document, lines: data.markdown.split("\n"), from, to});
+      if (generation === readId.current) setReading({doc: data.document, lines: data.markdown.split("\n"),
+        from, to, page: Math.floor((from - 1) / PAGE_LINES)});
     } catch (e) { setError((e as Error).message); }
   }
 
@@ -132,10 +134,20 @@ export default function Library() {
           </section>
           {reading && <section className="rounded-xl border border-border bg-card p-5">
             <h2 className="mb-3 font-semibold">{reading.doc.name} · 原文</h2>
-            <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words text-sm">{reading.lines.map((line,i)=>
+            {reading.lines.length > PAGE_LINES && <nav aria-label="原文分页" className="mb-3 flex items-center gap-3 text-sm">
+              <Button variant="outline" size="sm" disabled={reading.page === 0}
+                onClick={()=>setReading({...reading, page: reading.page - 1})}>上一页</Button>
+              <span>{reading.page + 1} / {Math.ceil(reading.lines.length / PAGE_LINES)}</span>
+              <Button variant="outline" size="sm" disabled={(reading.page + 1) * PAGE_LINES >= reading.lines.length}
+                onClick={()=>setReading({...reading, page: reading.page + 1})}>下一页</Button>
+            </nav>}
+            <pre key={reading.doc.id + "/" + reading.page} className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words text-sm">{reading.lines.slice(reading.page * PAGE_LINES,(reading.page + 1) * PAGE_LINES).map((line,offset)=>{
+              const i=reading.page * PAGE_LINES + offset;
+              return (
               <span key={i} ref={i+1===reading.from ? resultLine : undefined} className={`block ${i+1>=reading.from && i+1<=reading.to ? "bg-primary/15" : ""}`}>
                 <span className="mr-3 select-none text-xs text-muted-foreground">{i+1}</span>{line}
-              </span>)}</pre>
+              </span>);
+            })}</pre>
           </section>}
         </div>
       </div>
