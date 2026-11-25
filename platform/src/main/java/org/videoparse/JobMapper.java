@@ -1,0 +1,29 @@
+package org.videoparse;
+
+import java.util.List;
+import org.apache.ibatis.annotations.*;
+
+@Mapper
+public interface JobMapper {
+    record Job(String id, String videoId, String status, String error) {}
+    record Event(long id, String payload) {}
+
+    @Insert("INSERT INTO vp_job(id,video_id,active_video,status) VALUES(#{id},#{video},#{video},'queued') ON DUPLICATE KEY UPDATE id=id")
+    void submit(String id, String video);
+    @Select("SELECT id FROM vp_job WHERE active_video=#{video} FOR UPDATE")
+    String active(String video);
+    @Select("SELECT id,video_id,status,error FROM vp_job WHERE id=#{id}")
+    Job get(String id);
+    @Select("SELECT id FROM vp_job WHERE active_video IS NOT NULL ORDER BY created_at LIMIT 128")
+    List<String> candidates();
+    @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND active_video IS NOT NULL")
+    int begin(String id);
+    @Update("UPDATE vp_job SET status=#{status},error=#{error},active_video=NULL WHERE id=#{id} AND active_video IS NOT NULL")
+    int finish(String id,String status,String error);
+    @Insert("INSERT INTO vp_event(job_id,payload) VALUES(#{job},#{json})")
+    void event(String job,String json);
+    @Select("SELECT id,CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload FROM vp_event WHERE job_id=#{job} AND id>#{after} ORDER BY id LIMIT 100")
+    List<Event> events(String job,long after);
+    @Select("SELECT COUNT(*) FROM vp_event WHERE job_id=#{id}")
+    long count(String id);
+}
