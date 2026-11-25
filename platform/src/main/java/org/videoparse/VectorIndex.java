@@ -46,6 +46,45 @@ class VectorIndex {
         return model.embedAll(texts.stream().map(TextSegment::from).toList()).content().stream()
             .map(dev.langchain4j.data.embedding.Embedding::vector).toArray(float[][]::new);
     }
+    boolean configured() { return !endpoint.isBlank(); }
+    String space() { return collection; }
+
+    private void createCollection(int dimension) throws Exception {
+        var created=call("PUT","",Map.of("vectors",Map.of("size",dimension,"distance","Cosine")));
+        if(created.statusCode()!=409) require(created);
+    }
+
+    void indexDocument(String owner,String doc,List<MarkdownSections.Chunk> chunks) throws Exception {
+        if (!configured()) throw new java.io.IOException("未配置向量库");
+        var embeddings=embed(chunks.stream().map(c -> c.heading()+"\n"+c.body()).toList(),false);
+        var info=call("GET","",null);
+        if (info.statusCode()==404) createCollection(embeddings[0].length);
+        else require(info);
+        var points=new ArrayList<Object>();
+        for (int i=0;i<chunks.size();i++) {
+            int ordinal=chunks.get(i).ordinal();
+            var id=UUID.nameUUIDFromBytes(("markdown/"+doc+"/"+ordinal).getBytes(StandardCharsets.UTF_8));
+            points.add(Map.of("id",id.toString(),"vector",embeddings[i],
+                "payload",Map.of("owner",owner,"document",doc,"ordinal",ordinal)));
+        }
+        require(call("PUT","/points?wait=true",Map.of("points",points)));
+    }
+
+    record DocHit(String doc,int ordinal) {}
+    List<DocHit> documents(String owner,String doc,String question) throws Exception {
+        var conditions=new ArrayList<Object>();
+        conditions.add(condition("owner",owner));
+        if (doc!=null) conditions.add(condition("document",doc));
+        var found=require(call("POST","/points/query",Map.of("query",embed(List.of(question),true)[0],
+            "filter",Map.of("must",conditions),"with_payload",true,"limit",24,"score_threshold",0.4)));
+        var hits=new ArrayList<DocHit>();
+        for (var point:found.path("points")) {
+            var payload=point.path("payload");
+            hits.add(new DocHit(payload.path("document").asText(),payload.path("ordinal").asInt(-1)));
+        }
+        return hits;
+    }
+
     List<Integer> ranked(String video,List<EvidenceCorpus.Passage> docs,String q) throws Exception {
         if(endpoint.isBlank() || docs.isEmpty()) return List.of();
         String rev=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(docs)));
@@ -55,8 +94,7 @@ class VectorIndex {
         if(info.statusCode()!=404) require(info);
         float[] query=embed(List.of(q),true)[0];
         if(info.statusCode()==404) {
-            var created=call("PUT","",Map.of("vectors",Map.of("size",query.length,"distance","Cosine")));
-            if(created.statusCode()!=409) require(created);
+            createCollection(query.length);
         }
         var count=require(call("POST","/points/count",Map.of("filter",filter,"exact",true))).path("count").asInt();
         if(count!=docs.size()) {
