@@ -111,10 +111,19 @@ class AnalysisGraph {
             RETURN properties(e) ORDER BY e.id
             """, Map.of("job",job));
         if (rows.isEmpty()) throw new IOException("已发布的 Neo4j 解析结果缺失");
+        // OPTIONAL MATCH returns one null property map for a valid snapshot with no evidence.
+        if (rows.size() == 1 && rows.path(0).path("row").path(0).isNull()) return List.of();
         var passages = new ArrayList<EvidenceCorpus.Passage>();
         for (var row : rows) {
-            var node = row.path("row").get(0);
-            if (!node.isNull()) passages.add(json.treeToValue(node, EvidenceCorpus.Passage.class));
+            var node = row.path("row").path(0);
+            var id = node.path("id");
+            var text = node.path("text");
+            // Vector hits use these IDs as offsets into this same list.
+            if (!id.isIntegralNumber() || !id.canConvertToInt() || id.intValue() != passages.size()
+                    || !text.isTextual() || text.textValue().isBlank()) {
+                throw new IOException("图库证据编号或正文无效");
+            }
+            passages.add(json.treeToValue(node, EvidenceCorpus.Passage.class));
         }
         return passages;
     }

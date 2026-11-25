@@ -32,16 +32,20 @@ def run(base, neo4j, database):
         valid = '{"title":"recovered"}'
         heads = {}
         for video, quote, stored in ((published, "queue recovery", valid), (published, "queue invalid", "[]"),
-                                     (published, "queue revised", valid), (unrelated, "queue mismatch", valid)):
+                                     (published, "queue revised", valid), (unrelated, "queue mismatch", valid),
+                                     (published, None, valid)):
             job = uuid.uuid4().hex
             matches = video == published and stored == valid
             # Reproduce a graph commit whose MySQL version switch has not happened.
             statement = """
                 MERGE (v:VPVideo {id:$video})
                 CREATE (v)-[:HAS_ANALYSIS]->(a:VPAnalysis {id:$job,result:$result})
-                CREATE (a)-[:HAS_EVIDENCE]->(:VPEvidence {id:0,source:'speech',start:2.0,end:5.0,
-                    text:$quote,frame:''})
                 """
+            if quote is not None:
+                statement += """
+                    CREATE (a)-[:HAS_EVIDENCE]->(:VPEvidence {id:0,source:'speech',start:2.0,end:5.0,
+                        text:$quote,frame:''})
+                    """
             params = {"video": published, "job": job, "result": stored, "quote": quote}
             cypher(statement, params)
             with engine.begin() as db:
@@ -66,8 +70,17 @@ def run(base, neo4j, database):
                 assert head == heads.get(video)
             if matches:
                 assert session.get(base + "/result/" + video, timeout=5).json()["result"]["title"] == "recovered"
-                hits = session.get(base + "/v2/videos/" + video + "/evidence", params={"q": "queue"}, timeout=5)
-                assert hits.json()["hits"][0]["text"] == quote
+                path = base + "/v2/videos/" + video + "/evidence"
+                if quote == "queue revised":
+                    update = "MATCH (:VPAnalysis {id:$job})-[:HAS_EVIDENCE]->(e) SET e.id=$id,e.text=$text"
+                    for index, body in ((2, quote), (None, quote), (0, None), (0, 42)):
+                        cypher(update, {"job": job, "id": index, "text": body})
+                        reply = session.get(path, params={"q": "queue"}, timeout=5)
+                        assert reply.status_code == 503 and reply.json()["success"] is False, (index, body, reply.status_code)
+                    cypher(update, {"job": job, "id": 0, "text": quote})
+                hits = session.get(path, params={"q": "queue"}, timeout=5)
+                hits.raise_for_status()
+                assert [hit["text"] for hit in hits.json()["hits"]] == ([] if quote is None else [quote])
         update_result = "MATCH (a:VPAnalysis {id:$job}) SET a.result=$value"
         paths = ["/result/" + published, "/v2/library/videos/" + published]
         for damaged in (42, "[]", "{} trailing"):
