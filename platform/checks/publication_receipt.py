@@ -15,25 +15,30 @@ def run(base, neo4j, database):
     owner = response.json()["workspace_id"]
     engine = create_engine(database)
     try:
-        for matches in (True, False):
-            video, job = uuid.uuid4().hex, uuid.uuid4().hex
+        published, unrelated = uuid.uuid4().hex, uuid.uuid4().hex
+        with engine.begin() as db:
+            for video in (published, unrelated):
+                db.execute(text("""
+                    INSERT INTO videos(id,title,duration,status,created_at,owner_id)
+                    VALUES (:video,'Receipt',5,'analyzed',NOW(),:owner)
+                    """), {"video": video, "owner": owner})
+        for video, quote in ((published, "queue recovery"), (published, "queue revised"), (unrelated, "queue mismatch")):
+            job = uuid.uuid4().hex
+            matches = video == published
             # Reproduce a graph commit whose MySQL version switch has not happened.
             statement = """
-                CREATE (:VPVideo {id:$video})-[:HAS_ANALYSIS]->(a:VPAnalysis {id:$job,result:$result})
+                MERGE (v:VPVideo {id:$video})
+                CREATE (v)-[:HAS_ANALYSIS]->(a:VPAnalysis {id:$job,result:$result})
                 CREATE (a)-[:HAS_EVIDENCE]->(:VPEvidence {id:0,source:'speech',start:2.0,end:5.0,
-                    text:'queue recovery',frame:''})
+                    text:$quote,frame:''})
                 """
-            params = {"video": video if matches else uuid.uuid4().hex, "job": job, "result": '{"title":"recovered"}'}
+            params = {"video": published, "job": job, "result": '{"title":"recovered"}', "quote": quote}
             reply = requests.post(neo4j + "/db/neo4j/tx/commit",
                                   auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "")),
                                   json={"statements": [{"statement": statement, "parameters": params}]}, timeout=15)
             reply.raise_for_status()
             assert reply.json()["errors"] == []
             with engine.begin() as db:
-                db.execute(text("""
-                    INSERT INTO videos(id,title,duration,status,created_at,owner_id)
-                    VALUES (:video,'Receipt',5,'analyzed',NOW(),:owner)
-                    """), {"video": video, "owner": owner})
                 db.execute(text("""
                     INSERT INTO vp_job(id,video_id,active_video,status,publish_attempts)
                     VALUES (:job,:video,:video,'publishing',4)
@@ -54,7 +59,7 @@ def run(base, neo4j, database):
             if matches:
                 assert session.get(base + "/result/" + video, timeout=5).json()["result"]["title"] == "recovered"
                 hits = session.get(base + "/v2/videos/" + video + "/evidence", params={"q": "queue"}, timeout=5)
-                assert hits.json()["hits"][0]["text"] == "queue recovery"
+                assert hits.json()["hits"][0]["text"] == quote
     finally:
         engine.dispose()
         session.close()
