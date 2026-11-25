@@ -29,11 +29,16 @@ class DocumentReviewController {
         var first = db.sql("""
             SELECT r.id, r.doc_id, d.name, c.first_line, c.last_line, c.body, r.question, r.revision,
                 UNIX_TIMESTAMP(r.due_at) AS due_epoch,
-                SUM(r.due_at <= CURRENT_TIMESTAMP(3)) OVER () AS due_count, COUNT(*) OVER () AS total
-            FROM vp_doc_review r JOIN vp_document d ON d.id = r.doc_id
+                q.due_count, q.total
+            FROM (
+                SELECT r.id, SUM(r.due_at <= CURRENT_TIMESTAMP(3)) OVER () AS due_count, COUNT(*) OVER () AS total
+                FROM vp_doc_review r JOIN vp_document d ON d.id = r.doc_id
+                WHERE d.owner_id = :owner AND (:doc IS NULL OR r.doc_id = :doc)
+                ORDER BY r.due_at, r.id LIMIT 1
+            ) q
+            JOIN vp_doc_review r ON r.id = q.id
+            JOIN vp_document d ON d.id = r.doc_id
             JOIN vp_doc_chunk c ON c.doc_id = r.doc_id AND c.ordinal_no = r.ordinal_no
-            WHERE d.owner_id = :owner AND (:doc IS NULL OR r.doc_id = :doc)
-            ORDER BY r.due_at, r.id LIMIT 1
             """).param("owner", visitor.id()).param("doc", documentId, java.sql.Types.VARCHAR)
                 .query(Card.class).optional();
         return new Queue(true, first.orElse(null));
