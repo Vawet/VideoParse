@@ -18,6 +18,7 @@ class DocumentIndexer {
 
     @Scheduled(fixedDelayString="${DOCUMENT_INDEX_MS:2000}")
     void run() {
+        if (!vectors.configured()) return;
         String lease=DocumentLibrary.id();
         var task=queue.claim(vectors.space(),lease);
         if (task==null) return;
