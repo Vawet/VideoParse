@@ -1,0 +1,27 @@
+"""Long-lived, private Spring worker for learning tools. Only allow listed operations."""
+import json
+import logging
+import os
+import sys
+from app import learning_api
+
+OPERATIONS = {name: getattr(learning_api, name) for name in (
+    "get_keywords", "chat", "review_weak", "review_plan", "review_done", "teach_plan",
+    "teach_plan_get", "teach_plan_revise", "quiz_generate", "quiz_get", "quiz_answer", "verify",
+)}
+
+
+def main():
+    for line in sys.stdin:
+        try:
+            message = json.loads(line)
+            args = message["args"]
+            payload, status = OPERATIONS[message["tool"]](args["params"], os.environ.get("PUBLIC_BASE_URL", "/api"), *args["path"])
+        except Exception:
+            logging.exception("学习工具执行失败")
+            payload, status = {"success": False, "error": "学习工具执行失败"}, 500
+        print("VP_RESULT " + json.dumps({"status": status, "body": payload}, ensure_ascii=False), flush=True)
+
+
+if __name__ == "__main__":
+    main()

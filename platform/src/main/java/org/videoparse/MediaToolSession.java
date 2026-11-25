@@ -18,13 +18,16 @@ final class MediaToolSession implements AutoCloseable {
         request=child.outputWriter(StandardCharsets.UTF_8); response=child.inputReader(StandardCharsets.UTF_8);
     }
     JsonNode call(String name,Map<String,Object> args) throws Exception {
+        return call(name,args,45);
+    }
+    JsonNode call(String name,Map<String,Object> args,int minutes) throws Exception {
         request.write(json.writeValueAsString(Map.of("tool",name,"args",args)));request.newLine();request.flush();
         var read=reader.submit(()->{
             for(String line;(line=response.readLine())!=null;)
                 if(line.startsWith("VP_RESULT ")) return json.readTree(line.substring(10));
             throw new EOFException("媒体进程退出");
         });
-        try {return read.get(45,TimeUnit.MINUTES);}
+        try {return read.get(minutes,TimeUnit.MINUTES);}
         catch(Exception ex){child.destroyForcibly();read.cancel(true);throw ex;}
     }
     @Override public void close() {
