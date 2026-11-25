@@ -7,6 +7,7 @@ import { PrintNotes } from "./components/PrintNotes";
 import { ResultTabs } from "./components/ResultTabs";
 import { SlideLightbox } from "./components/SlideLightbox";
 import { UploadDropzone } from "./components/UploadDropzone";
+import { KeyframePreview } from "./components/KeyframePreview";
 import { BilibiliImport } from "./components/Bilibili";
 import { VideoPane } from "./components/VideoPane";
 import { usePlayerShortcuts } from "./hooks/use-player-shortcuts";
@@ -39,6 +40,7 @@ function WorkspaceShell({active}: {active: boolean}) {
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">导入课程或讲座，Agent 会转写语音、筛选关键帧并划分章节。解析时就能查看已完成的讲义、导图和复习材料。</p>
           <UploadDropzone onStart={adding ? () => void navigate("/", {replace: true}) : undefined}/>
           {import.meta.env.VITE_PLATFORM === "true" && <BilibiliImport onStart={adding ? () => void navigate("/", {replace: true}) : undefined}/>}
+          <KeyframePreview/>
           <EmptyIntro />
         </div>
       </div>
