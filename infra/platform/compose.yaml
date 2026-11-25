@@ -33,6 +33,11 @@ services:
       MINIO_ROOT_USER: videoparse
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?}
     volumes: [objects:/data]
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?}
+    volumes: [vectors:/qdrant/storage]
   namesrv:
     image: apache/rocketmq:5.3.4
     command: sh mqnamesrv
@@ -74,6 +79,14 @@ services:
       MINIO_ENDPOINT: http://objects:9000
       MINIO_ACCESS_KEY: videoparse
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
+      PLATFORM_EMBED_MODEL: ${PLATFORM_EMBED_MODEL:-BAAI/bge-m3}
+      PLATFORM_AI_KEY: ${PLATFORM_AI_KEY:-}
+      PLATFORM_AI_URL: ${PLATFORM_AI_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      PLATFORM_AI_MODEL: ${PLATFORM_AI_MODEL:-qwen-plus}
       WORKER_DIR: /srv
       ROCKETMQ_ENABLED: "true"
       ROCKETMQ_NAMESERVER: namesrv:9876
@@ -96,3 +109,4 @@ volumes:
   work:
   models:
   messages:
+  vectors:

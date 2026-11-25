@@ -26,3 +26,7 @@ docker compose -f infra/platform/compose.yaml up --build -d
 
 ## 恢复和画面文字
 平台 worker 为同一任务复用已写盘的成功步骤；新任务使用新的进度标识。JSON 先写临时文件再原子替换，读者不会读到半截结果。已提取的关键帧经本机 Tesseract 识别，OCR 记录保留来源帧和实际截帧时间，与说话字幕分别保存。
+
+## 证据检索与问答
+Java 读取字幕、视觉字幕和 OCR 记录，区分来源，使用 BM25 产生词法候选。可显式配置 EMBEDDING_API_KEY 启用 LangChain4j Embedding 与 Qdrant；检索按视频和内容版本过滤，BM25 和向量名次用 RRF 融合。无向量服务时仍然可以搜索。首次向量索引会调用所选嵌入服务，费用由该供应商计收。
+配置 PLATFORM_AI_KEY、PLATFORM_AI_URL 与 PLATFORM_AI_MODEL 后可对搜索结果发起问答。后端只接受能在候选片段中找到的逐字引文，用原始记录的时间定位。此检查能核对出处，不能证明模型对引文的解释正确。
