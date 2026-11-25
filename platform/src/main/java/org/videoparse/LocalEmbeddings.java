@@ -40,7 +40,7 @@ class LocalEmbeddings {
             }
             try {
                 if (session == null) session = new MediaToolSession(builder, json);
-                var reply = session.call("embed", Map.of("texts", texts, "query", query), 1);
+                var reply = session.call("embed", Map.of("texts", texts, "query", query), Duration.ofMinutes(1));
                 var vectors = json.treeToValue(reply, float[][].class);
                 if (vectors == null || vectors.length != texts.size()) throw new IOException("向量数量错误");
                 return vectors;

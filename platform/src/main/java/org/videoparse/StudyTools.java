@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.*;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import org.slf4j.*;
@@ -43,7 +44,7 @@ class StudyTools {
                 pb.environment().put("PUBLIC_BASE_URL",base);
                 session=new MediaToolSession(pb,json);
             }
-            var answer=session.call(operation,args,3);
+            var answer=session.call(operation,args,Duration.ofMinutes(3));
             if(!answer.has("status") || !answer.has("body")) throw new IOException("响应格式错误");
             idle.add(session);session=null;
             return ResponseEntity.status(answer.get("status").asInt()).body(answer.get("body"));

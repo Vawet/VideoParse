@@ -44,7 +44,7 @@ class AnalysisFlow {
         }
         JsonNode tool(String name,Map<String,Object> args,boolean repair) throws Exception {
             emit.accept(json.writeValueAsString(Map.of("type","tool_start","step",++step,"tool",name,"args",args)));
-            var obs=session.call(Map.of("tool",name,"args",args,"repair",repair),45);
+            var obs=session.call(Map.of("tool",name,"args",args,"repair",repair),Duration.ofMinutes(45));
             boolean ok=!obs.has("error") && obs.path("ok").asBoolean(true);
             emit.accept(json.writeValueAsString(Map.of("type","tool_end","step",step,"tool",name,"ok",ok,"observation",obs)));
             return obs;
