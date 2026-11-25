@@ -67,7 +67,14 @@ class JobRunner {
 
     boolean process(String id) throws SQLException {
         return withJobLock(id, parseCapacity, connection -> {
-            if (jobs.begin(id)==1) execute(id,jobs.get(id).videoId(),connection);
+            var task = jobs.get(id);
+            if (task == null) return;
+            boolean runnable = switch (task.status()) {
+                case "queued" -> jobs.startQueued(id) == 1;
+                case "running" -> true; // Its previous execution no longer holds the job lock.
+                default -> false;
+            };
+            if (runnable) execute(id, task.videoId(), connection);
         });
     }
 

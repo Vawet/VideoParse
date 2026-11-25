@@ -17,7 +17,7 @@ def run(base, database):
             owner = visitor.json()["workspace_id"]
             blocked = [{"id": uuid.uuid4().hex, "stage": stage}
                        for stage in ("running", "publishing") for _ in range(128)]
-            targets = {stage: uuid.uuid4().hex for stage in ("queued", "publishing")}
+            targets = {stage: uuid.uuid4().hex for stage in ("queued", "running", "publishing")}
             for row in blocked:
                 assert holder.execute(text("SELECT GET_LOCK(CONCAT('videoparse:',:id),0)"), row).scalar_one() == 1
             try:

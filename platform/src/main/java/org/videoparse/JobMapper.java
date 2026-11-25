@@ -37,8 +37,8 @@ public interface JobMapper {
         " UNION ALL (SELECT id,created_at FROM vp_job WHERE status='running'" + OLDEST_FREE + ")" +
         ") candidates ORDER BY created_at,id LIMIT 128")
     List<String> candidates();
-    @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND status IN ('queued','running')")
-    int begin(String id);
+    @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND status='queued'")
+    int startQueued(String id);
     @Update("UPDATE vp_job SET status='publishing' WHERE id=#{id} AND status='running'")
     int mediaReady(String id);
     @Select("SELECT id FROM vp_job WHERE status='publishing' AND publish_after<=CURRENT_TIMESTAMP(3)" + FREE_JOB +
