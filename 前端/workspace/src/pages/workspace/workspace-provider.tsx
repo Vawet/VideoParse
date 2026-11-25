@@ -485,6 +485,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     showDemoNotice:
       source === "demo" && (status === "parsing" || status === "ready") && !noticeDismissed,
     isLive: source === "live",
+    videoId,
     dismissDemoNotice: () => setNoticeDismissed(true),
     activeTab,
     setActiveTab,

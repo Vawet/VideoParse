@@ -58,6 +58,7 @@ export type WorkspaceValue = {
   showDemoNotice: boolean;
   /** True when the lecture comes from a real backend parse, not the bundled sample. */
   isLive: boolean;
+  videoId: string | null;
   dismissDemoNotice: () => void;
 
   /** Navigation */

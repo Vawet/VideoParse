@@ -1,10 +1,12 @@
 import { defineConfig, PluginOption } from "vite";
 import { enterDevPlugin, enterProdPlugin } from 'vite-plugin-enter-dev';
 import path from "path";
+import vue from "@vitejs/plugin-vue";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const plugins = [
+    vue(),
     ...enterProdPlugin(),
   ];
   if (mode === 'development') {

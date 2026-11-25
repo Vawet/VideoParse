@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import EvidencePanel from "../components/EvidencePanel";
 import { Eraser, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,7 +10,7 @@ import { TimestampChip } from "../components/TimestampChip";
 
 /** Subtitle-grounded Q&A: every answer carries timestamp chips and key-frame evidence. */
 export function ChatTab() {
-  const { lecture, messages, chatBusy, ask, clearChat, seekTo, jumpToSlide, isLive } =
+  const { lecture, messages, chatBusy, ask, clearChat, seekTo, jumpToSlide, isLive, videoId } =
     useWorkspace();
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -26,6 +27,7 @@ export function ChatTab() {
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-3">
+      {isLive && videoId && import.meta.env.VITE_PLATFORM === "true" && <EvidencePanel video={videoId} seek={seekTo} />}
       <div className="flex items-center gap-2.5">
         <span className="label-mono text-[9px]">01 · Chat</span>
         <span className="h-px w-6 bg-border" aria-hidden />
