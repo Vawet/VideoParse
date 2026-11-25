@@ -238,6 +238,14 @@ def extract_keyframes(ws, strategy, interval_seconds=None, similarity_threshold=
     return out
 
 
+@tool("read_frame_text", "识别关键帧中的文字，按实际帧时间保存。")
+def read_frame_text(ws):
+    from app.services.ocr import read_frames
+    records = read_frames(ws)
+    ws.save("ocr", records)
+    return {"frames_with_text": len(records)}
+
+
 @tool("extract_heavy_frames", "按 analyze_structure 挑出的重点时间点截取重点画面 heavy1.png...。需先 analyze_structure。")
 def extract_heavy_frames(ws):
     heavys = ws.load("heavys", [])
@@ -398,8 +406,8 @@ def finish(ws, note=""):
         "agent_note": note,
         "transcript_source": _transcript(ws).get("source", "speech"),  # speech=语音字幕 / visual=画面生成的视觉字幕
     }
-    with open(ws.result_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    from app.agent.state import atomic_json
+    atomic_json(ws.result_path, result)
     try:  # 入库（字幕分块供出题/检索使用）；数据库故障不应影响解析结果本身
         from app.db import repo
         repo.index_video(ws.video_id, _transcript(ws)["segments"], ws.meta.get("duration", 0))

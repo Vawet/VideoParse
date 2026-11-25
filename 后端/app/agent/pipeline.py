@@ -6,7 +6,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from app.agent import tools
+from app.agent import tools, checkpoints
 from app.agent.state import Workspace
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,13 @@ class _Runner:
         self.step += 1
         step = self.step
         self.emit({"type": "tool_start", "step": step, "tool": name, "args": args})
-        obs = tools.run_tool(name, self.ws, args, "analyze")
+        stamp = checkpoints.key(self.ws, name, args)
+        obs = checkpoints.read(self.ws, name, stamp)
+        if obs is None:
+            obs = tools.run_tool(name, self.ws, args, "analyze")
+            checkpoints.write(self.ws, stamp, obs)
+        else:
+            obs = {**obs, "resumed": True}
         ok = "error" not in obs
         self.emit({"type": "tool_end", "step": step, "tool": name, "ok": ok, "observation": obs})
         if not ok:
@@ -63,6 +69,9 @@ def run_pipeline(ws: Workspace, emit=lambda e: None):
     # 截帧策略由规则决定：短视频用相似度去重(适合 PPT/板书；口播画面变化小，去重后自然帧数少)，长视频均匀取样
     strategy = "interval" if duration > LONG_VIDEO_SECONDS else "slides"
     r.run("extract_keyframes", strategy=strategy, max_frames=30)
+
+    if getattr(ws, "job_id", None):
+        r.run("read_frame_text")
 
     if not has_speech:
         # 没有语音：先写画面笔记，再整理成"视觉字幕"，摘要/分段/脑图/关键词都基于它生成

@@ -23,3 +23,6 @@ docker compose -f infra/platform/compose.yaml up --build -d
 
 ## 消息投递
 平台配置使用 RocketMQ。新任务和待投递记录在同一 MySQL 事务中创建，Broker 确认后才删除待投递记录。重复消息会再次检查数据库任务状态。Broker 暂时不可用时记录保留，worker 定期从数据库补捞可运行任务。
+
+## 恢复和画面文字
+平台 worker 为同一任务复用已写盘的成功步骤；新任务使用新的进度标识。JSON 先写临时文件再原子替换，读者不会读到半截结果。已提取的关键帧经本机 Tesseract 识别，OCR 记录保留来源帧和实际截帧时间，与说话字幕分别保存。

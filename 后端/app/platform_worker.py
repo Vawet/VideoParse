@@ -12,6 +12,7 @@ def main():
 
     job_id, video_id = sys.argv[1:]
     ws = Workspace(video_id)
+    ws.job_id = job_id
     # JVM 退出后管道关闭，释放工作区锁，允许新 worker 继续。
     def watch_parent():
         sys.stdin.buffer.read()

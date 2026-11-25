@@ -3,8 +3,24 @@ import glob
 import json
 import os
 import threading
+import tempfile
 
 from app import config
+
+
+def atomic_json(path, value):
+    # Readers see either the old complete document or the new one.
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(path), delete=False, encoding="utf-8") as out:
+            tmp = out.name
+            json.dump(value, out, ensure_ascii=False, indent=2)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 class Workspace:
@@ -30,8 +46,8 @@ class Workspace:
         return os.path.join(self.work_dir, f"{name}.json")
 
     def save(self, name, obj):
-        with self._lock, open(self._path(name), "w", encoding="utf-8") as f:
-            json.dump(obj, f, ensure_ascii=False, indent=2)
+        with self._lock:
+            atomic_json(self._path(name), obj)
 
     def load(self, name, default=None):
         p = self._path(name)
