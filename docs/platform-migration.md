@@ -44,6 +44,12 @@ MySQL 保存规范化换行后的原文、标题路径、起止行和中文 ngra
 
 在独立实例使用 `后端/.venv/bin/python platform/checks/markdown_rag.py http://localhost:8088/api` 复测。脚本创建两个访客、三份文档，校验引用行、单篇范围和访客隔离。测试服务使用本地嵌入并关闭生成模型即可。若将 `MARKDOWN_EVAL_DATABASE_URL` 配为该测试实例的 SQLAlchemy MySQL 连接串，可同时测纯全文基线。两篇自有笔记上的 5 道小样本题中，全文检索 Hit@1 和 Hit@3 均为 4/5，加入本地 BGE 和 Qdrant 后两项均为 5/5。
 
+### 从文档引用开始复习
+
+在资料问答的引用下点击「加入复习」。卡片记录当时的问题，答案和行号指向原文段落。同一段重复保存会保留原问题和复习日期。打开资料库后，最早到期的卡片先出现；先回忆、再点「显示答案」，也可以点击行号核对原文。「还没记住」安排在 10 分钟后，「记住了」按连续记住次数分别安排在 1、3、7、14、30 天后。所有时间由服务器记录，跨标签页重复提交反馈只会生效一次。卡片按访客隔离，保存与复习均无需调用模型。
+
+在独立实例运行 `后端/.venv/bin/python platform/checks/document_review.py http://localhost:8088/api` 可验证保存、并发反馈、复习时间、原文定位和访客隔离。脚本会创建测试访客和一份 Markdown。
+
 ## 模型和费用
 
 - **媒体和学习工具**使用原 Python 实现。Whisper、FFmpeg、CLIP 和 Tesseract 在本机运行。讲义、视觉分析和出题等使用 `DASHSCOPE_API_KEY` 或 `DEEPSEEK_API_KEY`，可用 `LLM_PROVIDER` 选提供方。

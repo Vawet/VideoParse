@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, FileText, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { API_BASE, openWorkspace, type WebSource } from "@/lib/api";
+import type { WebSource } from "@/lib/api";
+import { api } from "./api";
+import { ReviewQueue } from "./ReviewQueue";
 
 type Document = { id: string; name: string; chunks: number; indexedChunks: number; indexState: string };
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
@@ -12,14 +14,6 @@ type Reading = { doc: Document; lines: string[]; from: number; to: number; page:
 const PAGE_LINES = 160;
 const pending = (doc: Document) => doc.indexState === "pending" || doc.indexState === "indexing";
 
-async function api<T>(path = "", options?: RequestInit): Promise<T> {
-  await openWorkspace();
-  const res = await fetch(API_BASE + "/v2/documents" + path, options);
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.error || "请求未完成");
-  return data;
-}
-
 export default function Library() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [scope, setScope] = useState("");
@@ -27,6 +21,9 @@ export default function Library() {
   const [reading, setReading] = useState<Reading | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<Answer | null>(null);
+  const [askedQuestion, setAskedQuestion] = useState("");
+  const [reviewUpdated, setReviewUpdated] = useState(0);
+  const [saved, setSaved] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -76,12 +73,22 @@ export default function Library() {
 
   async function ask() {
     if (searching || !question.trim()) return;
-    setError(""); setSearching(true); setAnswer(null);
+    setError(""); setSearching(true); setAnswer(null); setAskedQuestion(question.trim());
     try {
       setAnswer(await api<Answer>("/ask", { method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({question:question.trim(), documentId:scope || null, documentsOnly}) }));
     } catch (e) { setError((e as Error).message); }
     finally { setSearching(false); }
+  }
+
+  async function saveForReview(hit: Passage) {
+    const key = hit.docId + "/" + hit.ordinal;
+    try {
+      await api(`/${hit.docId}/chunks/${hit.ordinal}/review`, {method: "POST",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify({question: askedQuestion})});
+      setSaved(previous => new Set(previous).add(key));
+      setReviewUpdated(previous => previous + 1);
+    } catch (e) { setError((e as Error).message); }
   }
 
   return <main className="min-h-screen bg-background text-foreground">
@@ -130,14 +137,20 @@ export default function Library() {
               <h3 className="text-sm font-semibold">{answer.source === "web" ? "联网资料" : answer.generated ? "依据原文生成" : "原文检索结果"}</h3>
               <p className="whitespace-pre-wrap text-sm">{answer.answer}</p>
               {answer.source === "web" ? answer.web_sources.map((s,i) => <a key={s.url} className="block text-sm text-primary underline" href={s.url} target="_blank" rel="noopener noreferrer">[{i+1}] {s.title}</a>) :
-                answer.hits.map((h,i) => <button key={h.docId+"/"+h.ordinal} onClick={()=>void read(h.docId,h.firstLine,h.lastLine)}
+                answer.hits.map((h,i) => <div key={h.docId+"/"+h.ordinal}>
+                  <button onClick={()=>void read(h.docId,h.firstLine,h.lastLine)}
                   className="block w-full rounded-md border border-border p-3 text-left hover:bg-accent">
                   <span className="text-sm font-medium">[{i+1}] {h.name} · 第 {h.firstLine}–{h.lastLine} 行</span>
                   {h.heading && <span className="block text-xs text-muted-foreground">{h.heading}</span>}
                   <span className="mt-1 block line-clamp-2 text-xs">{h.body}</span>
-                </button>)}
+                  </button>
+                  <button type="button" className="mt-1 text-xs text-primary underline" onClick={()=>void saveForReview(h)}>
+                    {saved.has(h.docId+"/"+h.ordinal) ? "已加入复习" : "加入复习"}
+                  </button>
+                </div>)}
             </article>}
           </section>
+          <ReviewQueue updated={reviewUpdated} openSource={read} onRemove={()=>setSaved(new Set())}/>
           {reading && <section className="rounded-xl border border-border bg-card p-5">
             <h2 className="mb-3 font-semibold">{reading.doc.name} · 原文</h2>
             {reading.lines.length > PAGE_LINES && <nav aria-label="原文分页" className="mb-3 flex items-center gap-3 text-sm">
