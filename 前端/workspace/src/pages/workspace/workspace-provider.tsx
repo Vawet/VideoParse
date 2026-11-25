@@ -10,7 +10,7 @@ import {
   subscribeTask,
   uploadVideo,
   verifyUploadGate,
-  type RawResult,
+  type RawResult, type ArchivedVideo,
 } from "@/lib/api";
 import { recentTasks, rememberTask, type RecentTask } from "@/lib/recent-tasks";
 import { adaptChatAnswer, adaptResult } from "./data/adapter";
@@ -59,7 +59,7 @@ const ALL_RESULTS: Record<ResultKey, boolean> = {
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+export function WorkspaceProvider({ children, archive }: { children: React.ReactNode; archive?: ArchivedVideo }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mindmapSvgRef = useRef<SVGSVGElement | null>(null);
   const focusToken = useRef(0);
@@ -68,22 +68,24 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const lastRunMode = useRef<"demo" | "upload" | "fail">("demo");
   const abortRef = useRef<AbortController | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  const sessionRef = useRef<{ videoId: string; filepath: string; name: string } | null>(null);
+  const sessionRef = useRef<{ videoId: string; filepath: string; name: string } | null>(
+    archive?.filepath ? {videoId: archive.video.id, filepath: archive.filepath, name: archive.video.name} : null
+  );
   const liveStepRef = useRef<ParseStepId>("audio");
   const liveErrorRef = useRef<string | null>(null);
   const conversationRef = useRef<string | undefined>(undefined);
   const chatGeneration = useRef(0);
   const chatHistoryRef = useRef<unknown[]>([]);
 
-  const [status, setStatus] = useState<WorkspaceStatus>("empty");
-  const [videoMode, setVideoMode] = useState<"mock" | "file">("mock");
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<WorkspaceStatus>(archive ? "ready" : "empty");
+  const [videoMode, setVideoMode] = useState<"mock" | "file">(archive ? "file" : "mock");
+  const [videoUrl, setVideoUrl] = useState<string | null>(archive?.filepath ? API_BASE + "/uploads/" + encodeURIComponent(archive.filepath) : null);
   const [fileMeta, setFileMeta] = useState<{ name: string; size: number } | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [mediaDuration, setMediaDuration] = useState<number | null>(null);
-  const [title, setTitle] = useState(DEMO_LECTURE.title);
+  const [mediaDuration, setMediaDuration] = useState<number | null>(archive?.video.duration || null);
+  const [title, setTitle] = useState(archive?.video.name ?? DEMO_LECTURE.title);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
-  const [available, setAvailable] = useState<Record<ResultKey, boolean>>(NO_RESULTS);
+  const [available, setAvailable] = useState<Record<ResultKey, boolean>>(archive ? ALL_RESULTS : NO_RESULTS);
   const [focusRequest, setFocusRequest] = useState<{ segmentId: string; token: number } | null>(null);
   const [lightbox, setLightbox] = useState({ open: false, index: 0 });
   const [printMode, setPrintMode] = useState(false);
@@ -92,13 +94,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   /** "live" = a real upload parsed by the backend; "demo" = the bundled sample. */
-  const [source, setSource] = useState<"demo" | "live">("demo");
-  const [rawResult, setRawResult] = useState<RawResult | null>(null);
-  const [videoId, setVideoId] = useState<string | null>(null);
+  const [source, setSource] = useState<"demo" | "live">(archive ? "live" : "demo");
+  const [rawResult, setRawResult] = useState<RawResult | null>(archive?.result ?? null);
+  const [videoId, setVideoId] = useState<string | null>(archive?.video.id ?? null);
 
   const [recent, setRecent] = useState(recentTasks);
   const [stageDetail, setStageDetail] = useState<Partial<Record<ParseStepId,string>>>({});
   const run = useParseRun();
+  const { finishLive } = run;
+  useEffect(() => { if (archive) finishLive(); }, [archive, finishLive]);
   const liveLecture = useMemo(
     () =>
       rawResult && videoId

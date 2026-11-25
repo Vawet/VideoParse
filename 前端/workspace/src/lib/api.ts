@@ -211,6 +211,21 @@ export async function fetchResult(videoId: string) {
   return data.result;
 }
 
+export type LibraryVideo = { id: string; name: string; duration: number };
+export type LibraryDocument = { id: string; name: string; chunks: number; indexedChunks: number; indexState: string };
+export type LibraryFolder = { id: "videos" | "documents"; name: string };
+export type ArchivedVideo = { video: LibraryVideo; filepath: string; result: RawResult };
+
+export async function fetchLibrary() {
+  await openWorkspace();
+  return request<{ folders: LibraryFolder[]; videos: LibraryVideo[]; documents: LibraryDocument[] }>("/v2/library");
+}
+
+export async function fetchArchivedVideo(id: string, signal: AbortSignal) {
+  await openWorkspace();
+  return request<ArchivedVideo>("/v2/library/videos/" + encodeURIComponent(id), {signal});
+}
+
 export type RawCitation = { time: string; seconds: number; valid: boolean; text: string };
 
 export type WebSource = { title: string; url: string; snippet: string };

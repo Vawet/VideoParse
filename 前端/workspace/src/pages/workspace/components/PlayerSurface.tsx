@@ -21,6 +21,8 @@ export function PlayerSurface() {
               playsInline
               onLoadedMetadata={(event) => reportMediaDuration(event.currentTarget.duration)}
             />
+          ) : videoMode === "file" ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">原视频文件暂不可用，可继续查看解析结果。</div>
           ) : (
             <>
               <img

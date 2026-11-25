@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, FileText, Upload } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, Film, Folder, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import type { WebSource } from "@/lib/api";
+import { fetchLibrary, type LibraryDocument as Document, type LibraryFolder, type LibraryVideo, type WebSource } from "@/lib/api";
 import { api } from "./api";
 import { ReviewQueue } from "./ReviewQueue";
 
-type Document = { id: string; name: string; chunks: number; indexedChunks: number; indexState: string };
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
 type Answer = { source: "web"; answer: string; web_sources: WebSource[] } |
   { source: "document"; answer: string; generated: boolean; used_vectors: boolean; hits: Passage[] };
@@ -16,6 +15,9 @@ const pending = (doc: Document) => doc.indexState === "pending" || doc.indexStat
 
 export default function Library() {
   const [docs, setDocs] = useState<Document[]>([]);
+  const [folders, setFolders] = useState<LibraryFolder[]>([]);
+  const [videos, setVideos] = useState<LibraryVideo[]>([]);
+  const refreshId = useRef(0);
   const [scope, setScope] = useState("");
   const [documentsOnly, setDocumentsOnly] = useState(false);
   const [reading, setReading] = useState<Reading | null>(null);
@@ -33,10 +35,19 @@ export default function Library() {
   const readId = useRef(0);
   const needsRefresh = docs.some(pending);
   const refresh = useCallback(async () => {
-    const data = await api<{ documents: Document[] }>();
+    const generation = ++refreshId.current;
+    const data = await fetchLibrary();
+    if (generation !== refreshId.current) return;
     setDocs(data.documents);
+    setFolders(data.folders);
+    setVideos(data.videos);
   }, []);
   useEffect(() => { refresh().catch(e => setError(e.message)).finally(() => setLoading(false)); }, [refresh]);
+  useEffect(() => {
+    const reload = () => { if (document.visibilityState === "visible") refresh().catch(e => setError(e.message)); };
+    document.addEventListener("visibilitychange", reload);
+    return () => document.removeEventListener("visibilitychange", reload);
+  }, [refresh]);
   useEffect(() => {
     if (!needsRefresh) return;
     const id = window.setInterval(() => { refresh().catch(e => setError(e.message)); }, 3000);
@@ -105,14 +116,31 @@ export default function Library() {
       {error && <p role="alert" className="mb-4 rounded border border-destructive/40 p-3 text-sm">{error}</p>}
       <div className="grid items-start gap-6 md:grid-cols-[minmax(220px,1fr)_minmax(0,2fr)]">
         <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="mb-3 font-semibold">我的文档 <span className="text-sm text-muted-foreground">{docs.length}</span></h2>
-          {!docs.length && <p className="text-sm text-muted-foreground">{loading ? "正在读取…" : "上传一份 UTF-8 Markdown 笔记，即可按原文提问。每份上限 512 KiB。"}</p>}
-          <ul className="divide-y divide-border">{docs.map(d => <li key={d.id} className="py-3">
-            <button className="flex items-center gap-2 text-left text-sm font-medium" onClick={() => void read(d.id)}><FileText size={16}/>{d.name}</button>
-            <span className="mt-1 block text-xs text-muted-foreground">{d.indexState === "ready" ? `向量索引就绪 · ${d.chunks} 段` :
-              pending(d) ? `正在建立向量索引 · ${d.indexedChunks}/${d.chunks}` : "向量索引失败，可用全文检索"}</span>
-            {d.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+d.id+"/retry",{method:"POST"}).then(refresh).catch(e=>setError(e.message))}>重试索引</button>}
-          </li>)}</ul>
+          <h2 className="mb-3 font-semibold">我的文件夹</h2>
+          {loading && <p className="text-sm text-muted-foreground">正在读取…</p>}
+          {folders.map(folder => <details key={folder.id} open className="border-t border-border py-3">
+            <summary className="cursor-pointer font-medium">
+              <span className="inline-flex items-center gap-2 align-middle"><Folder size={16}/>{folder.name}
+                <span className="text-xs text-muted-foreground">{folder.id === "videos" ? videos.length : docs.length}</span>
+              </span>
+            </summary>
+            {folder.id === "videos" ? <div className="mt-2">
+              {!videos.length && <p className="text-sm text-muted-foreground">解析完成的视频会自动保存在这里。</p>}
+              <ul className="divide-y divide-border">{videos.map(video => <li key={video.id} className="py-2">
+                <Link to={"/library/videos/" + encodeURIComponent(video.id)} className="flex items-center gap-2 text-sm hover:underline">
+                  <Film size={16}/>{video.name}
+                </Link>
+              </li>)}</ul>
+            </div> : <div className="mt-2">
+              {!docs.length && <p className="text-sm text-muted-foreground">上传一份 UTF-8 Markdown 笔记，即可按原文提问。每份上限 512 KiB。</p>}
+              <ul className="divide-y divide-border">{docs.map(d => <li key={d.id} className="py-3">
+                <button className="flex items-center gap-2 text-left text-sm font-medium" onClick={() => void read(d.id)}><FileText size={16}/>{d.name}</button>
+                <span className="mt-1 block text-xs text-muted-foreground">{d.indexState === "ready" ? `向量索引就绪 · ${d.chunks} 段` :
+                  pending(d) ? `正在建立向量索引 · ${d.indexedChunks}/${d.chunks}` : "向量索引失败，可用全文检索"}</span>
+                {d.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+d.id+"/retry",{method:"POST"}).then(refresh).catch(e=>setError(e.message))}>重试索引</button>}
+              </li>)}</ul>
+            </div>}
+          </details>)}
         </section>
         <div className="space-y-5">
           <section className="space-y-3 rounded-xl border border-border bg-card p-5">

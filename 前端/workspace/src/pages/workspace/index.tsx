@@ -1,3 +1,4 @@
+import type { ArchivedVideo } from "@/lib/api";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AppHeader } from "./components/AppHeader";
@@ -67,8 +68,8 @@ function WorkspaceShell() {
   );
 }
 
-const Workspace = () => (
-  <WorkspaceProvider>
+const Workspace = ({archive}: {archive?: ArchivedVideo}) => (
+  <WorkspaceProvider archive={archive}>
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <div className="ambient-glow pointer-events-none absolute inset-x-0 top-0 h-80 opacity-70" aria-hidden />
       <AppHeader />
