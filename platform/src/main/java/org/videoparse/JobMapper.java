@@ -1,6 +1,7 @@
 package org.videoparse;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.*;
 
 @Mapper
@@ -8,7 +9,7 @@ public interface JobMapper {
     record Job(String id, String videoId, String status, String error) {}
     record Status(String videoId, String status, String error, long events) {}
     record Event(long id, String payload) {}
-    record Tail(String status, long lastEvent) {
+    record Tail(String id, String status, long lastEvent) {
         boolean finished() { return "done".equals(status) || "error".equals(status); }
     }
 
@@ -52,9 +53,11 @@ public interface JobMapper {
     void event(String job,String json);
     @Select("SELECT id,CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload FROM vp_event WHERE job_id=#{job} AND id>#{after} ORDER BY id LIMIT 100")
     List<Event> events(String job,long after);
-    @Select("""
-        SELECT j.status, COALESCE((SELECT MAX(e.id) FROM vp_event e WHERE e.job_id=j.id), 0) AS last_event
-        FROM vp_job j WHERE j.id=#{id}
-        """)
-    Tail tail(String id);
+    String TAIL_FIELDS = "SELECT j.id,j.status,COALESCE((SELECT MAX(e.id) FROM vp_event e WHERE e.job_id=j.id),0) AS last_event";
+    @Select(TAIL_FIELDS + OWNED_JOB)
+    Tail ownedTail(String id, String owner);
+    @MapKey("id")
+    @Select("<script>" + TAIL_FIELDS + " FROM vp_job j WHERE j.id IN " +
+        "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
+    Map<String,Tail> tails(@Param("ids") List<String> ids);
 }

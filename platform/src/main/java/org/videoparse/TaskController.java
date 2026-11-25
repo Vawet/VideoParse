@@ -75,8 +75,8 @@ class TaskController {
     @GetMapping(value="/tasks/{id}/events",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
     ResponseEntity<StreamingResponseBody> events(@PathVariable String id,
         @RequestHeader(value="Last-Event-ID",defaultValue="0") long cursor) {
-        String jobId = require(jobs.ownedJob(id, visitor.id())).id();
+        var initial = require(jobs.ownedTail(id, visitor.id()));
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noStore())
-            .header("X-Accel-Buffering", "no").body(out -> streams.write(jobId, cursor, out));
+            .header("X-Accel-Buffering", "no").body(out -> streams.write(initial, cursor, out));
     }
 }
