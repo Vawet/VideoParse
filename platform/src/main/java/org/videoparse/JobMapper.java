@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.*;
 @Mapper
 public interface JobMapper {
     record Job(String id, String videoId, String status, String error) {}
+    record Status(String videoId, String status, String error, long events) {}
     record Event(long id, String payload) {}
     record Tail(String status, long lastEvent) {
         boolean finished() { return "done".equals(status) || "error".equals(status); }
@@ -21,6 +22,11 @@ public interface JobMapper {
     String active(String video);
     @Select("SELECT id,video_id,status,error FROM vp_job WHERE id=#{id}")
     Job get(String id);
+    String OWNED_JOB = " FROM vp_job j JOIN videos v ON v.id=j.video_id WHERE j.id=#{id} AND v.owner_id=#{owner}";
+    @Select("SELECT j.id,j.video_id,j.status,j.error" + OWNED_JOB)
+    Job ownedJob(String id, String owner);
+    @Select("SELECT j.video_id,j.status,j.error,(SELECT COUNT(*) FROM vp_event e WHERE e.job_id=j.id) AS events" + OWNED_JOB)
+    Status ownedStatus(String id, String owner);
     @Select("SELECT id FROM vp_job WHERE status IN ('queued','running') ORDER BY created_at LIMIT 128")
     List<String> candidates();
     @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND status IN ('queued','running')")
@@ -51,6 +57,4 @@ public interface JobMapper {
         FROM vp_job j WHERE j.id=#{id}
         """)
     Tail tail(String id);
-    @Select("SELECT COUNT(*) FROM vp_event WHERE job_id=#{id}")
-    long count(String id);
 }

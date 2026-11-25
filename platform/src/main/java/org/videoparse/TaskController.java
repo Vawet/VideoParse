@@ -52,32 +52,30 @@ class TaskController {
         if(!Boolean.TRUE.equals(submitted.get("success")) || Boolean.TRUE.equals(body.get("async"))) return submitted;
         var id=(String)submitted.get("task_id");
         for(;;) {
-            var job=require(id);
+            var job=require(jobs.ownedJob(id, visitor.id()));
             if(job.status().equals("done")) return result(job.videoId());
             if(job.status().equals("error")) return Map.of("success",false,"error",job.error());
             Thread.sleep(500);
         }
     }
 
-    private JobMapper.Job require(String id) {
-        var job = jobs.get(id);
+    private static <T> T require(T job) {
         if (job == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
-        visitor.video(job.videoId());
         return job;
     }
 
     @GetMapping("/tasks/{id}")
     Map<String,Object> status(@PathVariable String id) {
-        var j=require(id);
+        var j=require(jobs.ownedStatus(id, visitor.id()));
         var data=new LinkedHashMap<String,Object>();
         data.put("success",true); data.put("video_id",j.videoId()); data.put("status",j.status());
-        data.put("error",j.error()); data.put("events",jobs.count(id)); return data;
+        data.put("error",j.error()); data.put("events",j.events()); return data;
     }
 
     @GetMapping(value="/tasks/{id}/events",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
     ResponseEntity<StreamingResponseBody> events(@PathVariable String id,
         @RequestHeader(value="Last-Event-ID",defaultValue="0") long cursor) {
-        String jobId = require(id).id();
+        String jobId = require(jobs.ownedJob(id, visitor.id())).id();
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noStore())
             .header("X-Accel-Buffering", "no").body(out -> streams.write(jobId, cursor, out));
     }

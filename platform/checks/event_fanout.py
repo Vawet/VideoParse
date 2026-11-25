@@ -52,7 +52,11 @@ def run(base, database_url):
         return ids, types
 
     try:
+        status_url = endpoint.removesuffix("/events")
+        assert requests.get(status_url, cookies=foreign, timeout=5).status_code == 404
         assert requests.get(endpoint, cookies=foreign, timeout=5).status_code == 404
+        snapshot = requests.get(status_url, cookies=cookies, timeout=5).json()
+        assert snapshot == {"success": True, "video_id": video, "status": "publishing", "error": None, "events": 1}
         with ThreadPoolExecutor(readers) as pool:
             streams = [pool.submit(read, 0, True) for _ in range(readers)]
             gate.wait()
@@ -70,6 +74,8 @@ def run(base, database_url):
                 ids.append(emit(conn, {"type": "end", "status": "done"}))
             for stream in streams:
                 assert stream.result() == (ids, ["progress"] * 221 + ["end"])
+        snapshot = requests.get(status_url, cookies=cookies, timeout=5).json()
+        assert snapshot["status"] == "done" and snapshot["events"] == len(ids)
         for cursor in (0, ids[88], ids[201], ids[-1], ids[-1] + 720):
             assert read(cursor)[0] == [event for event in ids if event > cursor]
         print(f"{readers} connections, {idle} SELECTs during 5 idle seconds, {len(ids)} ordered events per reader")
