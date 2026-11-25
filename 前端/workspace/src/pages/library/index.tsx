@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { fetchLibrary, type LibraryDocument as Document, type LibraryFolder, type LibraryVideo, type WebSource } from "@/lib/api";
 import { api } from "./api";
+import { LegacyImport } from "./LegacyImport";
 import { ReviewQueue } from "./ReviewQueue";
 
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
@@ -131,6 +132,7 @@ export default function Library() {
                   <Film size={16}/>{video.name}
                 </Link>
               </li>)}</ul>
+              <LegacyImport/>
             </div> : <div className="mt-2">
               {!docs.length && <p className="text-sm text-muted-foreground">上传一份 UTF-8 Markdown 笔记，即可按原文提问。每份上限 512 KiB。</p>}
               <ul className="divide-y divide-border">{docs.map(d => <li key={d.id} className="py-3">
