@@ -64,6 +64,21 @@ def _query(question):
     return (q or question.strip())[:240]
 
 
+def _brave_rows(payload):
+    if not isinstance(payload, dict) or "error" in payload:
+        raise ValueError("Invalid Brave search response")
+    web = payload.get("web")
+    if web is None and payload.get("type") == "search" and isinstance(payload.get("query"), dict):
+        return []
+    if not isinstance(web, dict) or not isinstance(web.get("results"), list):
+        raise ValueError("Missing Brave web results")
+    return web["results"]
+
+
+def _brave_text(value):
+    return BeautifulSoup(value, "html.parser").get_text(" ", strip=True) if isinstance(value, str) else ""
+
+
 def search(question):
     query = _query(question)
     key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
@@ -73,8 +88,7 @@ def search(question):
                                 params={"q": query, "count": 5}, headers={**headers, "X-Subscription-Token": key},
                                 timeout=(3, 8), allow_redirects=False)
         response.raise_for_status()
-        rows = [(item.get("title"), item.get("url"), item.get("description"))
-                for item in response.json().get("web", {}).get("results", [])]
+        rows = _brave_rows(response.json())
     else:
         response = requests.get("https://html.duckduckgo.com/html/", params={"q": query}, headers=headers,
                                 timeout=(3, 8))
@@ -84,20 +98,27 @@ def search(question):
         for result in page.select(".result:not(.result--ad)"):
             anchor, excerpt = result.select_one("a.result__a"), result.select_one(".result__snippet")
             if anchor and excerpt:
-                rows.append((anchor.get_text(" ", strip=True), anchor.get("href"), excerpt.get_text(" ", strip=True)))
+                rows.append({"title": anchor.get_text(" ", strip=True), "url": anchor.get("href"),
+                             "description": excerpt.get_text(" ", strip=True)})
         if not rows and not page.select_one(".no-results, .result--no-result"):
             raise ValueError("Search provider returned no usable result page")
 
     sources, seen = [], set()
-    for title, raw, snippet in rows:
-        url = _url(raw)
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        url = _url(item.get("url"))
+        title, snippet = item.get("title"), item.get("description")
+        if key:
+            title, snippet = _brave_text(title), _brave_text(snippet)
         if not url or url in seen or not title or not snippet:
             continue
         seen.add(url)
-        sources.append({"title": BeautifulSoup(title, "html.parser").get_text(" ", strip=True)[:180], "url": url,
-                        "snippet": BeautifulSoup(snippet, "html.parser").get_text(" ", strip=True)[:450]})
+        sources.append({"title": title[:180], "url": url, "snippet": snippet[:450]})
         if len(sources) == 5:
             break
+    if rows and not sources:
+        raise ValueError("Search results contained no usable sources")
     return sources
 
 

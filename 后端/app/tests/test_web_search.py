@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from app.services import web_search
 from app import learning_api
@@ -27,7 +29,7 @@ def test_web_contract_and_query_privacy(monkeypatch):
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     monkeypatch.setattr(web_search.grounded, "claims", lambda question, excerpts: [])
     class Fixture:
-        content = b'<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fdoc">Docs</a><span class="result__snippet">A public excerpt.</span></div>'
+        content = b'<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fdoc">Docs</a><span class="result__snippet">Use &lt;T&gt;.</span></div>'
         def raise_for_status(self): pass
     def fetch(url, params, headers, timeout):
         assert params == {"q": "Python official docs"}
@@ -38,6 +40,7 @@ def test_web_contract_and_query_privacy(monkeypatch):
                                       "history":[{"role":"user","content":"private note"}]}, "/api")
     assert status == 200 and not reply["citations"]
     assert reply["web_sources"][0]["url"] == "https://example.org/doc"
+    assert reply["web_sources"][0]["snippet"] == "Use <T>."
     assert reply["source"] == "web"
 
 
@@ -61,3 +64,26 @@ def test_search_failure(monkeypatch):
     assert web_search.web_reply("official docs")[1] == 503
     assert web_search._url("javascript:void(0)") is None
     assert web_search._url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fa%0Ab") is None
+
+
+@pytest.mark.parametrize(("payload", "status", "titles"), [
+    ({"web": {"results": []}}, 200, []),
+    ({"type": "search", "query": {"original": "fixture"}}, 200, []),
+    ({"error": "provider unavailable"}, 503, []),
+    ({"web": {"results": {}}}, 503, []),
+    ({"web": {"results": [{"title": " ", "url": "https://example.org", "description": "<b></b>"}]}}, 503, []),
+    ({"web": {"results": [None, {"url": "https://example.org", "title": "<b>Docs</b>",
+                                  "description": "Use &lt;T&gt;."}]}}, 200, ["Docs"]),
+])
+def test_brave_result_contract(monkeypatch, payload, status, titles):
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "fixture")
+    response = web_search.requests.Response()
+    response.status_code = 200
+    response._content = json.dumps(payload).encode()
+    monkeypatch.setattr(web_search.requests, "get", lambda *args, **kwargs: response)
+    monkeypatch.setattr(web_search.grounded, "claims", lambda *args: [])
+    reply, actual = learning_api.search_if_requested({"question": "联网搜索 fixture"}, "/api")
+    assert actual == status and reply["success"] == (status == 200)
+    assert [source["title"] for source in reply.get("web_sources", [])] == titles
+    if titles:
+        assert reply["web_sources"][0]["snippet"] == "Use <T>."
