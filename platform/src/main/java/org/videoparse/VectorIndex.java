@@ -88,18 +88,41 @@ class VectorIndex {
         prepareFilterIndexes();
     }
 
+    private Optional<JsonNode> storedPoints(Set<String> ids, List<String> fields) throws IOException, InterruptedException {
+        var response = call("POST", "/points", Map.of("ids",ids, "with_payload",fields, "with_vector",false));
+        if (response.statusCode() == 404) return Optional.empty();
+        var points = require(response);
+        if (!points.isArray()) throw new IOException("Qdrant 未返回已写入的证据编号");
+        return Optional.of(points);
+    }
+
     void indexDocument(String owner,String doc,List<MarkdownSections.Chunk> chunks) throws Exception {
-        if (!configured()) throw new java.io.IOException("未配置向量库");
-        var embeddings=embed(chunks.stream().map(c -> c.heading()+"\n"+c.body()).toList(),false);
-        var info=call("GET","",null);
-        if (info.statusCode()==404) createCollection(embeddings[0].length);
-        else require(info);
-        var points=new ArrayList<Object>();
-        for (int i=0;i<chunks.size();i++) {
-            int ordinal=chunks.get(i).ordinal();
-            var id=UUID.nameUUIDFromBytes(("markdown/"+doc+"/"+ordinal).getBytes(StandardCharsets.UTF_8));
-            points.add(Map.of("id",id.toString(),"vector",embeddings[i],
-                "payload",Map.of("owner",owner,"document",doc,"ordinal",ordinal)));
+        if (!configured()) throw new IOException("未配置向量库");
+        var missing = new LinkedHashMap<String,MarkdownSections.Chunk>();
+        for (var chunk : chunks) {
+            String key = "markdown/" + doc + "/" + chunk.ordinal();
+            missing.put(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString(), chunk);
+        }
+        var stored = storedPoints(missing.keySet(), List.of("owner","document","ordinal"));
+        if (stored.isPresent()) {
+            for (var point : stored.get()) {
+                String id = point.path("id").textValue();
+                var chunk = missing.get(id);
+                var payload = point.path("payload");
+                var ordinal = payload.path("ordinal");
+                if (chunk != null && owner.equals(payload.path("owner").textValue())
+                    && doc.equals(payload.path("document").textValue()) && ordinal.isIntegralNumber()
+                    && ordinal.longValue() == chunk.ordinal()) missing.remove(id);
+            }
+        }
+        if (missing.isEmpty()) return;
+        var texts = missing.values().stream().map(c -> c.heading()+"\n"+c.body()).toList();
+        var embeddings = embed(texts, false);
+        if (stored.isEmpty()) createCollection(embeddings[0].length);
+        var points = new ArrayList<Object>();
+        for (var entry : missing.entrySet()) {
+            points.add(Map.of("id",entry.getKey(), "vector",embeddings[points.size()],
+                "payload",Map.of("owner",owner, "document",doc, "ordinal",entry.getValue().ordinal())));
         }
         require(call("PUT","/points?wait=true",Map.of("points",points)));
     }
@@ -128,9 +151,8 @@ class VectorIndex {
             missing.put(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString(), doc);
         }
         if (partiallyIndexed) {
-            var existing = require(call("POST", "/points", Map.of("ids",missing.keySet(),
-                "with_payload",false, "with_vector",false)));
-            if (!existing.isArray()) throw new java.io.IOException("Qdrant 未返回已写入的证据编号");
+            var existing = storedPoints(missing.keySet(), List.of())
+                .orElseThrow(() -> new IOException("Qdrant 向量集合不存在"));
             for (var point : existing) missing.remove(point.path("id").textValue());
         }
         if (missing.isEmpty()) return;
