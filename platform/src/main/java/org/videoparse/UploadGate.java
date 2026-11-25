@@ -42,6 +42,10 @@ class UploadGate {
         redis.opsForValue().set("vp:grant:"+token,"1",Duration.ofMinutes(10));
         return Map.of("success",true,"token",token);
     }
+    void check(String token) {
+        if (!answer.isEmpty() && (token == null || !Boolean.TRUE.equals(redis.hasKey("vp:grant:"+token))))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"请重新验证上传口令");
+    }
     void consume(String token) {
         if(!answer.isEmpty() && (token==null || redis.opsForValue().getAndDelete("vp:grant:"+token)==null))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,"请重新验证上传口令");

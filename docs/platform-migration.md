@@ -131,3 +131,9 @@ python -m app.migrate_learning /只读快照/videoparse.db
 - **复测入口。** 对已结束任务运行 `python3 platform/checks/replay.py http://localhost:8088/api 任务ID`，配合 `--cookie-jar 私有测试Cookie文件` 可核查事件流 MIME 类型、递增事件 ID 和续读。在独立测试工作区将 `后端/app/tests/eval/golden.json` 放到测试访客已上传视频的 `outputs/<视频ID>_work/transcript.json`，从 `后端/` 运行 `python -m app.tests.eval.retrieval_eval --platform-api http://localhost:8088/api --video-id 视频ID --cookie-jar 私有测试Cookie文件`，可测 Spring 实际检索结果。
 - **图发布。** 隔离工作区使用真实 RocketMQ、MySQL 和 Neo4j，媒体进程使用固定测试数据。在图库短时故障、提交后丢回执、重复消息和服务重启场景中，同一任务只执行一次媒体解析，图里保留一组证据。连续五次写入失败后成功从工作区补发。单独关闭 RocketMQ 消费后，MySQL 补捞也能完成发布。
 - **部署边界。** 已用 Compose v2 验证含 Neo4j 的九个服务配置，正常打包 Java 和前端。整套容器构建在拉取 Docker Hub 基础镜像时网络超时，尚未验证全容器冷启动。商业模型效果、生产并发和最低服务器内存也未实测。
+
+### B 站视频链接与评论
+
+在学习工作台粘贴公开的 B 站视频页或 b23.tv 视频短链接，点击「开始解析」。带 `?p=2` 的链接会导入第二个分 P。平台下载可公开访问的单段 MP4 / FLV 音视频，沿用 2 GiB 上限、当前工作区归属、对象存储和现有解析队列。需要登录、付费或没有可用公开媒体流的链接会显示失败原因。
+
+在导入视频的播放器下点击「B 站评论 → 分析公开热评」，从热门排序的首页选取最多 6 条有正文的顶层评论，将这批样本提交给已配置的文本模型。页面并排提供归纳、逐字引文和采样原文；没有可用模型时仍能查看样本。成功的分析随该视频保存，重新打开可读取已有结果。
