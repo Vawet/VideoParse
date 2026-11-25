@@ -20,6 +20,11 @@ class DocumentSearch {
     private final Logger log=LoggerFactory.getLogger(getClass());
     DocumentSearch(JdbcClient db,VectorIndex vectors) { this.db=db; this.vectors=vectors; }
 
+    List<Passage> opening(String owner,String doc) {
+        return db.sql(SELECT+" AND d.id=? ORDER BY c.ordinal_no LIMIT 5")
+            .params(owner,doc).query(Passage.class).list();
+    }
+
     Result search(String owner,String doc,String question) {
         var args=new ArrayList<Object>();
         args.add(owner);

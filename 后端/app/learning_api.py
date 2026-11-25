@@ -72,10 +72,24 @@ def search_if_requested(params, base):
     return _ok({"success": True, "source": "local"})
 
 
+def document_route(params, base):
+    question = params["question"]
+    return _ok({"success": True, "web": web_search.needs_web(question),
+                "strict": bool(web_search.LOCAL_ONLY.search(question))})
+
+
+def document_web_sources(params, base):
+    try:
+        sources = web_search.search(params["question"])
+    except (web_search.requests.RequestException, ValueError, KeyError, TypeError):
+        return _fail("联网搜索暂时不可用，请稍后重试。", 503)
+    return _ok({"success": True, "sources": sources})
+
+
 def document_answer(params, base):
-    passages = params["excerpts"]
-    claims = grounded.claims(params["question"], passages)
-    return _ok({"success": True, "claims": claims})
+    result = grounded.compose(params["question"], params["excerpts"], params.get("history"),
+                              params.get("allow_explanation", False))
+    return _ok({"success": True, **result})
 
 
 def review_weak(params, base):
