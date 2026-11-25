@@ -88,7 +88,8 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
   const [fileMeta, setFileMeta] = useState<{ name: string; size: number } | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [mediaDuration, setMediaDuration] = useState<number | null>(archive?.video.duration || null);
-  const [title, setTitle] = useState(archive?.video.name ?? DEMO_LECTURE.title);
+  const [workingTitle, setTitle] = useState(DEMO_LECTURE.title);
+  const title = archive?.video.name ?? workingTitle;
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [available, setAvailable] = useState<Record<ResultKey, boolean>>(archive ? ALL_RESULTS : NO_RESULTS);
   const [focusRequest, setFocusRequest] = useState<{ segmentId: string; token: number } | null>(null);

@@ -61,6 +61,26 @@ class LibraryController {
         return Map.of("success",true,"video",new Video(id,video.name(),video.duration()),"filepath",filepath,"result",result);
     }
 
+    @PatchMapping("/videos/{id}")
+    @Transactional
+    public Map<String,Object> rename(@PathVariable String id,@RequestBody Map<String,String> body) {
+        String name=body.getOrDefault("name","");
+        if (name==null || name.isBlank() || name.length()>300 || name.chars().anyMatch(Character::isISOControl))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"视频名称需要 1 至 300 字");
+        String owner=visitor.id();
+        if (db.sql("SELECT 1 FROM videos WHERE id=? AND owner_id=? AND folder_id='videos' FOR UPDATE")
+                .params(id,owner).query(Integer.class).optional().isEmpty()) throw missing();
+        db.sql("UPDATE videos SET title=? WHERE id=? AND owner_id=?").params(name.strip(),id,owner).update();
+        return Map.of("success",true);
+    }
+
+    @DeleteMapping("/videos/{id}")
+    Map<String,Object> remove(@PathVariable String id) {
+        if (db.sql("UPDATE videos SET folder_id=NULL WHERE id=? AND owner_id=? AND folder_id='videos'")
+                .params(id,visitor.id()).update()==0) throw missing();
+        return Map.of("success",true);
+    }
+
     private String mediaFile(String id, String filename) {
         // Imported analyses can predate resumable upload manifests.
         var extensions = List.of("mp4","webm","mkv","mov","avi","flv","m4v");

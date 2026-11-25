@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, FileText, Film, Folder, Waypoints, MessageCircle, PanelLeft, Search, SquarePlay } from "lucide-react";
-import { Link, Outlet, useLocation, useSearchParams } from "react-router-dom";
+import { ChevronRight, FileText, Film, Folder, Waypoints, MessageCircle, PanelLeft, Search, SquarePlay, Plus, Ellipsis, Eye, Pencil, Trash2 } from "lucide-react";
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useLibrary } from "./use-library";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { PasteMarkdown } from "./PasteMarkdown";
+import { LibraryItemDialog, type LibraryAction } from "./LibraryItemDialog";
 import { LegacyImport } from "./LegacyImport";
 import Workspace from "../workspace";
 
 const row = "flex min-h-9 min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium outline-offset-1 hover:bg-sidebar-accent focus-visible:outline-ring";
 const selected = "bg-primary/10 text-primary";
 function LibraryList({onSelect}: {onSelect?: () => void}) {
-  const {pathname} = useLocation();
+  const {pathname, search, hash} = useLocation();
+  const navigate = useNavigate();
+  const [action, setAction] = useState<LibraryAction | null>(null);
   const [params] = useSearchParams();
   const {data, isPending, isError, refetch} = useLibrary();
   const [filter, setFilter] = useState("");
@@ -19,6 +24,20 @@ function LibraryList({onSelect}: {onSelect?: () => void}) {
   const term = filter.trim().toLocaleLowerCase();
   const match = (name: string) => name.toLocaleLowerCase().includes(term);
   const docPath = (id: string) => "/library?doc=" + encodeURIComponent(id);
+  function finishAction() {
+    if (!action) return;
+    void refetch();
+    const target = action.folder === "videos" ? "/library/videos/" + action.id : docPath(action.id);
+    const isDocument = action.folder === "documents";
+    if (action.kind === "delete" && (pathname === target || (pathname === "/library" && isDocument))) {
+      const removingCurrent = isDocument ? doc === action.id : pathname === target;
+      void navigate(removingCurrent ? "/library" : pathname + search + hash, {
+        replace: true, state: {libraryChange: Date.now()},
+      });
+    }
+    setAction(null);
+  }
+
   return <nav className="study-library-nav flex h-full min-w-0 flex-col text-sidebar-foreground" aria-label="资料库导航">
     <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
       <span className="relative grid size-9 shrink-0 place-items-center rounded-full border border-border bg-card">
@@ -47,25 +66,48 @@ function LibraryList({onSelect}: {onSelect?: () => void}) {
         const visible = items.filter(item => match(item.name));
         const open = !closed[folder.id];
         return <section key={folder.id} className="mb-2">
-          <button type="button" aria-expanded={open} className={cn(row,"w-full")}
+          <div className="flex items-center">
+          <button type="button" aria-expanded={open} className={cn(row,"flex-1")}
             onClick={()=>setClosed({...closed,[folder.id]:open})}>
             <ChevronRight size={13} className={cn("text-muted-foreground transition-transform",open && "rotate-90")}/>
             <Folder size={17} className="text-primary"/>{folder.name}
             <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">{items.length}</span>
           </button>
+          {video
+            ? <Link to="/?add=video" onClick={onSelect} aria-label="新增视频" title="新增视频"
+                className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-primary"><Plus size={16}/></Link>
+            : <PasteMarkdown sidebar onSaved={id => {setFilter(""); setClosed({...closed,documents:false}); void refetch(); onSelect?.(); void navigate(docPath(id));}}/>}
+          </div>
           {open && <ul className="ml-4 border-l border-border pl-2">
             {visible.map(item => {
               const url = video ? "/library/videos/" + encodeURIComponent(item.id) : docPath(item.id);
               const active = video ? pathname === url : pathname === "/library" && doc === item.id;
               const Icon = video ? Film : FileText;
-              return <li key={item.id}><Link to={url} onClick={onSelect} title={item.name} aria-current={active ? "page" : undefined}
-                className={cn(row,"min-h-8 font-normal",active && selected)}><Icon size={14} className="shrink-0"/><span className="truncate">{item.name}</span></Link></li>;
+              return <li key={item.id} className={cn("flex items-center rounded-lg",active && selected)}>
+                <Link to={url} onClick={onSelect} title={item.name} aria-current={active ? "page" : undefined}
+                  className={cn(row,"min-h-8 flex-1 font-normal")}><Icon size={14} className="shrink-0"/><span className="truncate">{item.name}</span></Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" aria-label={item.name + " 的操作"} title="资料操作"
+                      className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-primary"><Ellipsis size={15}/></button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild><Link to={url} onClick={onSelect}><Eye size={15}/>查看</Link></DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setAction({folder:folder.id, ...item, kind:"rename"})}><Pencil size={15}/>重命名</DropdownMenuItem>
+                    <DropdownMenuSeparator/>
+                    <DropdownMenuItem className="text-destructive" onSelect={() => setAction({folder:folder.id, ...item, kind:"delete"})}>
+                      <Trash2 size={15}/>{video ? "从资料库移除" : "删除文档"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>;
             })}
             {!visible.length && <li className="px-2.5 py-1.5 text-xs text-muted-foreground">{term ? "无匹配项" : "暂无" + folder.name}</li>}
           </ul>}
         </section>;
       })}
     </div>
+    {action && <LibraryItemDialog action={action} onClose={() => setAction(null)} onSaved={finishAction}/>}
     <div className="px-5 pb-5"><LegacyImport/></div>
   </nav>;
 }

@@ -35,12 +35,12 @@ class DocumentSearch {
         var rows=new LinkedHashMap<VectorIndex.DocHit,Passage>();
         lexical.forEach(row->rows.put(row.key(),row));
         List<VectorIndex.DocHit> dense=List.of();
-        String ready="SELECT 1 FROM vp_document WHERE owner_id=?"+(doc==null?"":" AND id=?")+
-            " AND index_state='ready' AND vector_space=? LIMIT 1";
-        var readyArgs=new ArrayList<>(args);
-        readyArgs.add(vectors.space());
-        if (vectors.configured() && db.sql(ready).params(readyArgs).query(Integer.class).optional().isPresent()) try {
-            dense=vectors.documents(owner,doc,question);
+        if (vectors.configured()) try {
+            var readyArgs=new ArrayList<>(args);
+            readyArgs.add(vectors.space());
+            var readyDocs=db.sql("SELECT id FROM vp_document WHERE owner_id=?" + (doc==null?"":" AND id=?") +
+                    " AND index_state='ready' AND vector_space=?").params(readyArgs).query(String.class).list();
+            if (!readyDocs.isEmpty()) dense=vectors.documents(owner,readyDocs,question);
         } catch (Exception ex) { log.warn("文档检索回退全文索引 ({})",ex.getClass().getSimpleName()); }
         var visibleDense=new HashSet<VectorIndex.DocHit>();
         if (!dense.isEmpty()) {

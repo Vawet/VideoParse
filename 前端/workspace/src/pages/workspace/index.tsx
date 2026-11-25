@@ -9,6 +9,7 @@ import { SlideLightbox } from "./components/SlideLightbox";
 import { UploadDropzone } from "./components/UploadDropzone";
 import { VideoPane } from "./components/VideoPane";
 import { usePlayerShortcuts } from "./hooks/use-player-shortcuts";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect } from "react";
 import { usePlayback, useWorkspace } from "./hooks/use-workspace";
 import { WorkspaceProvider } from "./workspace-provider";
@@ -20,7 +21,13 @@ function WorkspaceShell({active}: {active: boolean}) {
   useEffect(() => { if (!active && playing) toggle(); }, [active, playing, toggle]);
   usePlayerShortcuts(active && (status === "parsing" || status === "ready" || status === "failed"));
 
-  if (status === "empty") {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const adding = active && params.get("add") === "video";
+  if (adding && status === "uploading") return <div className="p-6 text-sm">
+    当前视频正在上传。<Link className="text-primary underline" to="/">查看上传进度</Link>
+  </div>;
+  if (status === "empty" || adding) {
     return (
       <div className="study-home vp-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1020px] px-5 py-7 sm:px-9 sm:py-9 xl:px-12">
@@ -29,7 +36,7 @@ function WorkspaceShell({active}: {active: boolean}) {
             变成<span className="text-gold">可检索</span>、<span className="text-gold">可复习</span>的<span className="inline-block">知识资产<span className="text-primary">。</span></span>
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">导入课程或讲座，Agent 会转写语音、筛选关键帧并划分章节。解析时就能查看已完成的讲义、导图和复习材料。</p>
-          <UploadDropzone />
+          <UploadDropzone onStart={adding ? () => void navigate("/", {replace: true}) : undefined}/>
           <EmptyIntro />
         </div>
       </div>

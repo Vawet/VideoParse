@@ -127,12 +127,26 @@ class VectorIndex {
         require(call("PUT","/points?wait=true",Map.of("points",points)));
     }
 
+    void removeDocument(String owner,String doc) {
+        if (!configured()) return;
+        try {
+            var filter=Map.of("must",List.of(condition("owner",owner),condition("document",doc)));
+            var response=call("POST","/points/delete?wait=true",Map.of("filter",filter));
+            if (response.statusCode()!=404) require(response);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        } catch (IOException ex) {
+            // Searches already exclude document IDs removed from the library.
+            log.warn("无法清理已删除文档的向量 {} ({})",doc,ex.getClass().getSimpleName());
+        }
+    }
+
     record DocHit(String doc,int ordinal) {}
-    List<DocHit> documents(String owner,String doc,String question) throws Exception {
+    List<DocHit> documents(String owner,List<String> documents,String question) throws Exception {
         prepareFilterIndexes();
         var conditions=new ArrayList<Object>();
         conditions.add(condition("owner",owner));
-        if (doc!=null) conditions.add(condition("document",doc));
+        conditions.add(Map.of("key","document","match",Map.of("any",documents)));
         var found=require(call("POST","/points/query",Map.of("query",embed(List.of(question),true)[0],
             "filter",Map.of("must",conditions),"with_payload",true,"limit",24,"score_threshold",0.4)));
         var hits=new ArrayList<DocHit>();

@@ -37,12 +37,12 @@ class DocumentIndexQueue {
         return task;
     }
 
-    void completeBatch(Task task, String lease, int processed) {
+    boolean completeBatch(Task task, String lease, int processed) {
         int next = task.indexedChunks() + processed;
-        db.sql("""
+        return db.sql("""
             UPDATE vp_document SET indexed_chunks=?,index_state=?,failures=0,lease=NULL,due_at=CURRENT_TIMESTAMP(3)
             WHERE id=? AND lease=?
-            """).params(next, next == task.chunks() ? "ready" : "pending", task.id(), lease).update();
+            """).params(next, next == task.chunks() ? "ready" : "pending", task.id(), lease).update()==1;
     }
 
     void deferBusy(Task task, String lease) {

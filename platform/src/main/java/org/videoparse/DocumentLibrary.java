@@ -42,11 +42,29 @@ class DocumentLibrary {
         return db.sql("SELECT markdown FROM vp_document WHERE owner_id=? AND id=?")
             .params(visitor.id(),doc).query(String.class).optional().orElseThrow(DocumentLibrary::missing);
     }
+    private static void validateName(String name) {
+        if (name==null || !name.matches("(?i)[^/\\\\\\p{Cntrl}]{1,230}\\.(md|markdown)"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请选择 .md 或 .markdown 文件");
+    }
+
+    @Transactional
+    public Document rename(String doc, String name) {
+        validateName(name);
+        db.sql("UPDATE vp_document SET name=? WHERE id=? AND owner_id=?").params(name,doc,visitor.id()).update();
+        return require(doc);
+    }
+
+    void delete(String doc) {
+        String owner=visitor.id();
+        if (db.sql("DELETE FROM vp_document WHERE id=? AND owner_id=?").params(doc,owner).update()==0)
+            throw missing();
+        vectors.removeDocument(owner,doc);
+    }
+
     @Transactional(rollbackFor=Exception.class)
     public Document upload(MultipartFile file) throws Exception {
         String name=file.getOriginalFilename();
-        if (name==null || !name.matches("(?i)[^/\\\\\\p{Cntrl}]{1,230}\\.(md|markdown)"))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请选择 .md 或 .markdown 文件");
+        validateName(name);
         if (file.getSize()>512*1024) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,"每份 Markdown 上限 512 KiB");
         String content;
         try { content=StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(file.getBytes())).toString(); }

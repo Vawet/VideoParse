@@ -29,7 +29,10 @@ class DocumentIndexer {
                 """).params(task.id(),task.indexedChunks()).query(MarkdownSections.Chunk.class).list();
             if (chunks.isEmpty()) throw new IllegalStateException("缺少文档分段");
             vectors.indexDocument(task.ownerId(),task.id(),chunks);
-            queue.completeBatch(task, lease, chunks.size());
+            if (!queue.completeBatch(task, lease, chunks.size()) &&
+                    db.sql("SELECT 1 FROM vp_document WHERE id=?").param(task.id()).query(Integer.class).optional().isEmpty()) {
+                vectors.removeDocument(task.ownerId(),task.id());
+            }
         } catch (LocalEmbeddings.Busy busy) {
             queue.deferBusy(task, lease);
         } catch (Exception e) {

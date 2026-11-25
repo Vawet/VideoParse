@@ -32,7 +32,8 @@ function fragmentRange(hash: string) {
 export default function Library() {
   const [params] = useSearchParams();
   const selected = params.get("doc") || "";
-  return <LibraryPage key={selected} selected={selected}/>;
+  const {state} = useLocation();
+  return <LibraryPage key={selected + "/" + (state?.libraryChange ?? "")} selected={selected}/>;
 }
 
 function LibraryPage({selected}: {selected: string}) {

@@ -70,6 +70,15 @@ def run(base):
         scoped = next_card(document)
         assert (scoped["docId"], scoped["dueCount"], scoped["total"]) == (document, due, 1)
         assert next_card(document, other) is None
+    path = api + "/documents/" + graph
+    new_name = {"name": "图论复习.md"}
+    assert other.patch(path, json=new_name, timeout=10).status_code == 404
+    assert other.delete(path, timeout=10).status_code == 404
+    owner.patch(path, json=new_name, timeout=10).raise_for_status()
+    assert next_card(graph)["name"] == new_name["name"]
+    owner.delete(path, timeout=15).raise_for_status()
+    assert owner.get(path, timeout=10).status_code == 404
+    assert next_card(graph) is None and next_card()["docId"] == doc
     print("PASS private global and single-document queues, counts, citation lines, concurrent feedback and recall timing")
 
 

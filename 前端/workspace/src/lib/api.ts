@@ -221,6 +221,14 @@ export async function fetchLibrary() {
   return request<{ folders: LibraryFolder[]; videos: LibraryVideo[]; documents: LibraryDocument[] }>("/v2/library");
 }
 
+export async function changeLibraryItem(folder: LibraryFolder["id"], id: string, name?: string) {
+  await openWorkspace();
+  const base = folder === "videos" ? "/v2/library/videos/" : "/v2/documents/";
+  return request(base + encodeURIComponent(id), name === undefined ? {method: "DELETE"} : {
+    method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name}),
+  });
+}
+
 export async function fetchArchivedVideo(id: string, signal: AbortSignal) {
   await openWorkspace();
   return request<ArchivedVideo>("/v2/library/videos/" + encodeURIComponent(id), {signal});

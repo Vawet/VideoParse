@@ -9,7 +9,7 @@ import { useWorkspace } from "../hooks/use-workspace";
 const ACCEPTED = [".mp4", ".mov", ".mkv", ".webm", ".m4v"];
 const MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
-export function UploadDropzone() {
+export function UploadDropzone({onStart}: {onStart?: () => void}) {
   const { uploadFile, startDemo, startFailureDemo } = useWorkspace();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -24,6 +24,7 @@ export function UploadDropzone() {
       toast.error("文件超过 2 GB,请先压缩或截取片段后再上传。");
       return;
     }
+    onStart?.();
     uploadFile(file);
   };
 
@@ -44,7 +45,7 @@ export function UploadDropzone() {
           onChange={e=>{const file=e.target.files?.[0]; if (file) accept(file); e.target.value="";}}/>
       </section>
       <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
-        <button type="button" onClick={startDemo} aria-label="使用示例视频" className="group block h-full w-full text-left">
+        <button type="button" onClick={() => {onStart?.(); startDemo();}} aria-label="使用示例视频" className="group block h-full w-full text-left">
           <div className="relative h-32 overflow-hidden bg-muted md:h-36">
             <img src={demoPreview} alt="示例课中的 Q、K、V 讲解幻灯片" className="size-full object-cover object-center"/>
             <span className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full bg-black/65 text-white"><Play size={15} fill="currentColor"/></span>
@@ -58,7 +59,7 @@ export function UploadDropzone() {
       </section>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground sm:col-span-2">
         <span>{import.meta.env.VITE_PLATFORM === "true" ? "解析完成后，视频会自动归入资料库。" : "支持上传本机视频或体验内置示例。"}</span>
-        <button type="button" onClick={startFailureDemo} className="inline-flex items-center gap-1.5 hover:text-primary"><FlaskConical size={13}/>查看解析失败示例</button>
+        <button type="button" onClick={() => {onStart?.(); startFailureDemo();}} className="inline-flex items-center gap-1.5 hover:text-primary"><FlaskConical size={13}/>查看解析失败示例</button>
       </div>
     </div>
   );
