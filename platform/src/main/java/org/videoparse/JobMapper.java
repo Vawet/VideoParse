@@ -28,13 +28,21 @@ public interface JobMapper {
     Job ownedJob(String id, String owner);
     @Select("SELECT j.video_id,j.status,j.error,(SELECT COUNT(*) FROM vp_event e WHERE e.job_id=j.id) AS events" + OWNED_JOB)
     Status ownedStatus(String id, String owner);
-    @Select("SELECT id FROM vp_job WHERE status IN ('queued','running') ORDER BY created_at LIMIT 128")
+    String LOCK_PREFIX = "videoparse:";
+    // Advisory only. The runner must still acquire the same lock and check the current stage.
+    String FREE_JOB = " AND IS_FREE_LOCK(CONCAT('" + LOCK_PREFIX + "',id))=1";
+    String OLDEST_FREE = FREE_JOB + " ORDER BY created_at,id LIMIT 128";
+    @Select("SELECT id FROM (" +
+        "(SELECT id,created_at FROM vp_job WHERE status='queued'" + OLDEST_FREE + ")" +
+        " UNION ALL (SELECT id,created_at FROM vp_job WHERE status='running'" + OLDEST_FREE + ")" +
+        ") candidates ORDER BY created_at,id LIMIT 128")
     List<String> candidates();
     @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND status IN ('queued','running')")
     int begin(String id);
     @Update("UPDATE vp_job SET status='publishing' WHERE id=#{id} AND status='running'")
     int mediaReady(String id);
-    @Select("SELECT id FROM vp_job WHERE status='publishing' AND publish_after<=CURRENT_TIMESTAMP(3) ORDER BY publish_after LIMIT 128")
+    @Select("SELECT id FROM vp_job WHERE status='publishing' AND publish_after<=CURRENT_TIMESTAMP(3)" + FREE_JOB +
+        " ORDER BY publish_after,id LIMIT 128")
     List<String> publications();
     record Publication(String videoId,int attempts) {}
     @Select("SELECT video_id,publish_attempts AS attempts FROM vp_job WHERE id=#{id} AND status='publishing' AND publish_after<=CURRENT_TIMESTAMP(3)")

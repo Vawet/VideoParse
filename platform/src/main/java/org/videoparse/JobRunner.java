@@ -73,7 +73,7 @@ class JobRunner {
 
     private boolean withJobLock(String id, java.util.concurrent.locks.Lock capacity, LockedJob job) throws SQLException {
         if(!capacity.tryLock()) return false;
-        try(var c=db.getConnection(); var lock=MySqlLock.tryAcquire(c,"videoparse:"+id)) {
+        try(var c=db.getConnection(); var lock=MySqlLock.tryAcquire(c,JobMapper.LOCK_PREFIX+id)) {
             if(lock==null) return false;
             job.run(c);
             return true;

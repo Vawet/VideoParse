@@ -97,6 +97,8 @@ Qdrant 使用 `owner`、`document`、`video`、`revision` 四个 keyword 字段�
 
 图库写入失败后，任务分别等待 2、4、8、16 秒再尝试，连续 5 次失败后进入 `error` 并保留磁盘产物。退避时间记录在 MySQL。发布前会按任务 ID 核对 Neo4j 快照及所属视频。图库已提交但回执丢失时，重试直接完成 MySQL 的版本切换，工作卷暂时不可读也能恢复。消费者重启或消息重复时检查持久化阶段。两阶段也会从 MySQL 扫描待办。`WORKER_POLL_MS` 控制解析补捞间隔，`PUBLISH_POLL_MS` 默认与其相同。SSE 的 `progress` 事件报告写图进度，发布成功后才发送 `end/done`。
 
+数据库补捞按任务年龄或发布到期时间选取最多 128 个候选。选取时跳过其他会话已持有执行锁的任务，执行前仍需取得任务锁并检查阶段。在关闭 MQ、启用图发布、使用空工作区和无效 `WORKER_PYTHON` 的独立测试实例，可设置 `JOB_POLL_TEST_DATABASE_URL` 后运行 `后端/.venv/bin/python platform/checks/locked_job_queue.py http://localhost:8088/api`，验证两条队列在队首 128 个任务被锁住时仍能处理后续任务。
+
 进度连接建立时，Spring 在同一次 MySQL 查询中校验访客归属并读取任务状态和最新事件 ID。连接追上最新事件后，每个实例每隔约 400 毫秒合并查询仍有订阅的活动任务，每批最多 128 个任务。最近一页事件按任务共享，每个连接独立保存游标，落后的连接按索引补读。最后一个连接退出时释放该任务的内存页。跨实例重连续读使用同一个数据库游标。查询 `GET /tasks/{id}` 时，任务状态与事件总数在同一条带归属检查的 SQL 中读取，返回同一个已提交快照。
 
 在独立且关闭图发布的测试实例上，设置 `FANOUT_TEST_DATABASE_URL` 为该实例的 SQLAlchemy MySQL 连接串，运行 `后端/.venv/bin/python platform/checks/event_fanout.py http://localhost:8088/api`。默认用 64 个连接订阅同一任务，追加 `--tasks 64` 可验证两个访客的 64 个任务，`--tasks 129` 可验证跨批次订阅。检查包含空闲数据库读取、跨页事件、终态、续读和访客隔离。数据库查询计数覆盖整个实例，各场景应单独运行。
