@@ -22,11 +22,13 @@ class JobRunner {
     private final Path directory, data;
     private final String engine;
     private final AnalysisFlow flow;
-    JobRunner(DataSource db, JobMapper jobs, JobService service, ObjectMapper json, AnalysisFlow flow, @Value("${PARSE_ENGINE:java}") String engine,
+    private final AnalysisResults results;
+    private final AnalysisGraph graph;
+    JobRunner(DataSource db, JobMapper jobs, JobService service, ObjectMapper json, AnalysisFlow flow, AnalysisResults results, AnalysisGraph graph, @Value("${PARSE_ENGINE:java}") String engine,
               @Value("${videoparse.python}") String python, @Value("${videoparse.worker-dir}") Path directory,
               @Value("${videoparse.data}") Path data, @Value("${videoparse.public-base}") String publicBase) {
         if(!java.util.Set.of("java","python").contains(engine)) throw new IllegalArgumentException("PARSE_ENGINE 需为 java 或 python");
-        this.engine=engine;this.flow=flow;this.db=db; this.jobs=jobs; this.service=service; this.json=json;
+        this.results=results;this.graph=graph;this.engine=engine;this.flow=flow;this.db=db; this.jobs=jobs; this.service=service; this.json=json;
         this.python=python; this.directory=directory; this.data=data; this.publicBase=publicBase;
     }
     private boolean lock(Connection c, String function, String id) throws SQLException {
@@ -64,6 +66,7 @@ class JobRunner {
                     catch(SQLException ex){throw new IllegalStateException(ex);}
                     jobs.event(id,event);
                 });
+                if(graph.enabled()) results.publish(id,video);
                 service.finish(id,null);
             } catch(InterruptedException ex){Thread.currentThread().interrupt();}
               catch(Exception ex){
@@ -92,6 +95,9 @@ class JobRunner {
                     if(!lock.isValid(3)) throw new SQLException("解析任务数据库连接中断");
                 }
                 reader.get();
+                if(child.exitValue()==0 && graph.enabled()) {
+                    try { results.publish(id,video); } catch(java.io.IOException e){service.finish(id,"写入图数据库失败");return;}
+                }
                 service.finish(id,child.exitValue()==0?null:"解析进程失败，退出码 "+child.exitValue());
             } catch(InterruptedException e) {Thread.currentThread().interrupt();}
               catch(ExecutionException e) {log.error("事件记录失败，保留可恢复任务 {}",id,e);}

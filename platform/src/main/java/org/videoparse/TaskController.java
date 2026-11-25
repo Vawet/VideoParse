@@ -1,6 +1,5 @@
 package org.videoparse;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
@@ -14,11 +13,11 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 class TaskController {
     private final JobMapper jobs;
     private final JobService service;
-    private final Path uploads,outputs;
-    private final ObjectMapper json;
-    TaskController(JobMapper jobs, JobService service, ObjectMapper json, @Value("${videoparse.data}") Path root) {
+    private final Path uploads;
+    private final AnalysisResults results;
+    TaskController(JobMapper jobs, JobService service, AnalysisResults results, @Value("${videoparse.data}") Path root) {
         this.jobs = jobs; this.service = service; this.uploads = root.resolve("uploads");
-        this.outputs=root.resolve("outputs"); this.json=json;
+        this.results=results;
     }
 
     @GetMapping("/health")
@@ -37,12 +36,9 @@ class TaskController {
 
     @GetMapping("/result/{video}")
     Map<String,Object> result(@PathVariable String video) throws java.io.IOException {
-        if (!video.matches("[a-zA-Z0-9_-]{1,64}")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"非法视频编号");
-        var file=outputs.resolve(video+"_result.json");
-        if(!Files.isRegularFile(file)) return Map.of("success",false,"error","解析结果不存在");
-        try(var input=Files.newInputStream(file)) {
-            return Map.of("success",true,"result",json.readTree(input),"video_id",video);
-        }
+        var result=results.result(video);
+        if(result==null) return Map.of("success",false,"error","解析结果不存在");
+        return Map.of("success",true,"result",result,"video_id",video);
     }
 
     @PostMapping("/analyze")

@@ -11,8 +11,9 @@ class JobService {
     private final JobMapper jobs;
     private final ObjectMapper json;
     private final boolean mq;
-    JobService(JobMapper jobs, ObjectMapper json, @org.springframework.beans.factory.annotation.Value("${vp.mq.enabled:false}") boolean mq) {
-        this.jobs = jobs; this.json = json; this.mq = mq;
+    private final AnalysisGraph graph;
+    JobService(JobMapper jobs, ObjectMapper json, AnalysisGraph graph, @org.springframework.beans.factory.annotation.Value("${vp.mq.enabled:false}") boolean mq) {
+        this.jobs = jobs; this.json = json; this.mq = mq; this.graph = graph;
     }
 
     @Transactional
@@ -28,6 +29,11 @@ class JobService {
     public void finish(String id, String error) {
         String status = error == null ? "done" : "error";
         if (jobs.finish(id, status, error) == 1) {
+            if (error == null) {
+                var video = jobs.get(id).videoId();
+                if (graph.enabled()) jobs.publishHead(video,id);
+                else jobs.clearHead(video);
+            }
             var event = json.createObjectNode().put("type", "end").put("status", status);
             if (error != null) event.put("error", error);
             jobs.event(id, event.toString());

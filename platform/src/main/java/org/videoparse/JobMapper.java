@@ -22,6 +22,10 @@ public interface JobMapper {
     int begin(String id);
     @Update("UPDATE vp_job SET status=#{status},error=#{error},active_video=NULL WHERE id=#{id} AND active_video IS NOT NULL")
     int finish(String id,String status,String error);
+    @Insert("INSERT INTO vp_graph_head(video_id,job_id) VALUES(#{video},#{job}) ON DUPLICATE KEY UPDATE job_id=#{job}")
+    void publishHead(String video,String job);
+    @Delete("DELETE FROM vp_graph_head WHERE video_id=#{video}")
+    void clearHead(String video);
     @Insert("INSERT INTO vp_event(job_id,payload) VALUES(#{job},#{json})")
     void event(String job,String json);
     @Select("SELECT id,CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload FROM vp_event WHERE job_id=#{job} AND id>#{after} ORDER BY id LIMIT 100")

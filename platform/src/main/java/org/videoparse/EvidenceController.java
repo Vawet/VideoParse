@@ -14,22 +14,22 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/v2/videos/{video}")
 class EvidenceController {
-    private final EvidenceCorpus corpus;
+    private final AnalysisResults results;
     private final VectorIndex vectors;
     private final ObjectMapper json;
     private final OpenAiChatModel model;
     private final Logger log=LoggerFactory.getLogger(getClass());
-    EvidenceController(EvidenceCorpus corpus,VectorIndex vectors,ObjectMapper json,
+    EvidenceController(AnalysisResults results,VectorIndex vectors,ObjectMapper json,
             @Value("${PLATFORM_AI_KEY:}") String key,@Value("${PLATFORM_AI_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}") String base,
             @Value("${PLATFORM_AI_MODEL:qwen-plus}") String modelName) {
-        this.corpus=corpus;this.vectors=vectors;this.json=json;
+        this.results=results;this.vectors=vectors;this.json=json;
         this.model=key.isBlank()?null:OpenAiChatModel.builder().apiKey(key).baseUrl(base).modelName(modelName)
             .timeout(Duration.ofSeconds(45)).maxRetries(0).build();
     }
     record Search(List<EvidenceCorpus.Passage> hits, int vectorCandidates) {}
     private Search search(String video,String q) throws Exception {
         if(q==null || q.isBlank() || q.length()>1000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请输入 1 至 1000 字的问题");
-        var docs=corpus.load(video); var lexical=EvidenceCorpus.lexical(docs,q);
+        var docs=results.evidence(video); var lexical=EvidenceCorpus.lexical(docs,q);
         List<Integer> dense;
         try {dense=vectors.ranked(video,docs,q);}
         catch(Exception e){log.warn("向量检索降级 ({})",e.getClass().getSimpleName());dense=List.of();}

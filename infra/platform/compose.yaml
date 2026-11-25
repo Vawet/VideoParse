@@ -37,6 +37,14 @@ services:
       MINIO_ROOT_USER: videoparse
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?}
     volumes: [objects:/data]
+  graph:
+    image: neo4j:5.26.19-community
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?generate graph credential}
+      NEO4J_server_memory_heap_initial__size: 128m
+      NEO4J_server_memory_heap_max__size: 384m
+      NEO4J_server_memory_pagecache_size: 128m
+    volumes: [graph:/data]
   qdrant:
     image: qdrant/qdrant:v1.18.2
     environment:
@@ -76,6 +84,8 @@ services:
       MINIO_ENDPOINT: http://objects:9000
       MINIO_ACCESS_KEY: videoparse
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      NEO4J_URL: http://graph:7474
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?generate graph credential}
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:?}
       EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-small-zh-v1.5}
@@ -111,3 +121,4 @@ volumes:
   models:
   messages:
   vectors:
+  graph:
