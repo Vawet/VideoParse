@@ -3,10 +3,11 @@ import { ExternalLink, FileText, Upload } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import type { LibraryDocument as Document, WebSource } from "@/lib/api";
-import { api } from "./api";
+import { api, uploadDocument } from "./api";
 import { indexPending, useLibrary } from "./use-library";
 import { ThemeToggle } from "../workspace/components/ThemeToggle";
 import { ReviewQueue } from "./ReviewQueue";
+import { PasteMarkdown } from "./PasteMarkdown";
 
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
 type Claim = { id: number; answer: string; quote: string; firstLine: number; lastLine: number };
@@ -88,10 +89,7 @@ function LibraryPage({selected}: {selected: string}) {
     if (!files.length) return;
     setUploading(true); setError("");
     try {
-      for (const file of files) {
-        const form = new FormData(); form.set("file", file);
-        await api("", {method:"POST", body:form});
-      }
+      for (const file of files) await uploadDocument(file);
     } catch (e) { setError((e as Error).message); }
     finally {
       if (picker.current) picker.current.value = "";
@@ -124,6 +122,10 @@ function LibraryPage({selected}: {selected: string}) {
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border pl-14 pr-3 sm:pr-6">
       <span className="truncate text-sm font-medium">{selected ? "文档阅读" : "资料问答与复习"}</span>
       <div className="flex shrink-0 items-center gap-2">
+        <PasteMarkdown disabled={uploading} onSaved={id => {
+          void library.refetch();
+          void navigate("/library?doc=" + encodeURIComponent(id));
+        }}/>
         <Button size="sm" disabled={uploading} onClick={() => picker.current?.click()}><Upload size={15}/>{uploading ? "正在上传…" : "上传 Markdown"}</Button>
         <ThemeToggle/>
       </div>
