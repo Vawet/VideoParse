@@ -23,14 +23,19 @@ class DocumentLibrary {
     }
     static String id() { return UUID.randomUUID().toString().replace("-",""); }
     record Document(String id,String name,int chunks,int indexedChunks,String indexState) {}
-    private static final String FIELDS="id,name,chunks,indexed_chunks,index_state";
+    private JdbcClient.StatementSpec documentRows(String owner, String filter) {
+        return db.sql("""
+            SELECT id,name,chunks,CASE WHEN vector_space=:space THEN indexed_chunks ELSE 0 END AS indexed_chunks,
+                CASE WHEN vector_space=:space THEN index_state ELSE 'pending' END AS index_state
+            FROM vp_document WHERE owner_id=:owner AND
+            """ + filter).param("owner",owner).param("space",vectors.space());
+    }
     List<Document> list() {
-        return db.sql("SELECT "+FIELDS+" FROM vp_document WHERE owner_id=? AND folder_id='documents' ORDER BY created_at DESC,id")
-            .param(visitor.id()).query(Document.class).list();
+        return documentRows(visitor.id(), "folder_id='documents' ORDER BY created_at DESC,id").query(Document.class).list();
     }
     Document require(String doc) {
-        return db.sql("SELECT "+FIELDS+" FROM vp_document WHERE owner_id=? AND id=?")
-            .params(visitor.id(),doc).query(Document.class).optional().orElseThrow(DocumentLibrary::missing);
+        return documentRows(visitor.id(), "id=:doc").param("doc",doc)
+            .query(Document.class).optional().orElseThrow(DocumentLibrary::missing);
     }
     static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"文档不存在"); }
     String markdown(String doc) {
@@ -56,8 +61,7 @@ class DocumentLibrary {
             INSERT INTO vp_document(id,owner_id,digest,name,markdown,chunks,vector_space) VALUES(?,?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE id=id
             """).params(proposed,owner,digest,name,content,chunks.size(),vectors.space()).update();
-        Document actual=db.sql("SELECT "+FIELDS+" FROM vp_document WHERE owner_id=? AND digest=? FOR UPDATE")
-            .params(owner,digest).query(Document.class).single();
+        Document actual=documentRows(owner, "digest=:digest FOR UPDATE").param("digest",digest).query(Document.class).single();
         if (proposed.equals(actual.id())) {
             batch.batchUpdate("INSERT INTO vp_doc_chunk(doc_id,ordinal_no,heading,first_line,last_line,body) VALUES(?,?,?,?,?,?)",
                 chunks,100,(s,c)->{
