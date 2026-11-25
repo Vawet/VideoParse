@@ -74,6 +74,19 @@ class AnalysisGraph {
         constraintsReady = true;
     }
 
+    boolean hasSnapshot(String job, String video) throws IOException {
+        var rows = query("""
+            MATCH (a:VPAnalysis {id:$job})
+            RETURN a.result IS NOT NULL AND EXISTS {
+                MATCH (:VPVideo {id:$video})-[:HAS_ANALYSIS]->(a)
+            }
+            """, Map.of("job",job, "video",video));
+        if (rows.isEmpty()) return false;
+        if (rows.size() != 1 || !rows.get(0).path("row").path(0).booleanValue())
+            throw new IOException("图库中的任务快照与视频不一致");
+        return true;
+    }
+
     void store(String job, String video, JsonNode result, List<EvidenceCorpus.Passage> passages) throws IOException {
         ensureConstraints();
         query(WRITE, Map.of("job",job, "video",video, "result",json.writeValueAsString(result), "passages",passages));

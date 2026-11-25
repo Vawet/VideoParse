@@ -63,6 +63,8 @@ class AnalysisResults {
     }
 
     void publish(String job, String video) throws IOException {
+        // The graph transaction may have committed before the publisher received its reply.
+        if (graph.hasSnapshot(job, video)) return;
         var result = json.readTree(resultFile(video).toFile());
         if (result == null || !result.isObject()) throw new IOException("解析结果格式无效");
         var dir = outputs.resolve(video + "_work");

@@ -85,13 +85,13 @@ docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml exe
 
 平台将成功的解析结果写入 Neo4j 5.26。一个视频可关联多次分析，每次分析保存完整结果，并关联按顺序编号的语音、画面笔记和 OCR 证据节点。节点保留原文、时间范围及来源帧。结果页和单视频证据检索通过已发布的任务编号读取同一份图快照。Qdrant 继续提供向量排名，视频文件和关键帧保存在原媒体存储。
 
-升级已有 Compose 配置时先运行 `python3 infra/platform/configure.py --add-graph`，再启动平台。独立运行 Spring 时设置 `NEO4J_URL`（例如 `http://127.0.0.1:7474`）、`NEO4J_USER` 和 `NEO4J_PASSWORD`。图记录与证据在同一 Neo4j 事务内创建，MySQL 在完成任务的事务中切换当前版本。旧工作区仍可读取。备份应一并保留 MySQL、Neo4j 和媒体卷。
+升级已有 Compose 配置时先运行 `python3 infra/platform/configure.py --add-graph`，再启动平台。独立运行 Spring 时设置 `NEO4J_URL`（例如 `http://127.0.0.1:7474`）、`NEO4J_USER` 和 `NEO4J_PASSWORD`。图记录与证据在同一 Neo4j 事务内创建，MySQL 在完成任务的事务中切换当前版本。读请求发现已发布版本但实例无法访问图库时返回 HTTP 503。无图版本的旧工作区仍可读取。备份应一并保留 MySQL、Neo4j 和媒体卷。
 
 ## 消息队列与图发布恢复
 
 解析使用 RocketMQ 的 `VideoParseAnalysis` 主题和 `vp-analysis` 消费组。媒体产物保存后，Spring 在一个 MySQL 事务中把任务置为 `publishing` 并登记待发送的图发布消息。`VideoParseResults` 主题由 `vp-results` 消费组独立处理，消息体均为任务 ID。图库慢时，其他视频仍可解析。同一视频在发布期间提交会返回当前任务 ID。所有实例应共用工作卷、数据库及相同的图配置。
 
-图库写入失败后，任务分别等待 2、4、8、16 秒再尝试，连续 5 次失败后进入 `error` 并保留磁盘产物。退避时间记录在 MySQL。消费者重启或消息重复时检查持久化阶段，图提交回执丢失时可重投。两阶段也会从 MySQL 扫描待办。`WORKER_POLL_MS` 控制解析补捞间隔，`PUBLISH_POLL_MS` 默认与其相同。SSE 的 `progress` 事件报告写图进度，发布成功后才发送 `end/done`。
+图库写入失败后，任务分别等待 2、4、8、16 秒再尝试，连续 5 次失败后进入 `error` 并保留磁盘产物。退避时间记录在 MySQL。发布前会按任务 ID 核对 Neo4j 快照及所属视频。图库已提交但回执丢失时，重试直接完成 MySQL 的版本切换，工作卷暂时不可读也能恢复。消费者重启或消息重复时检查持久化阶段。两阶段也会从 MySQL 扫描待办。`WORKER_POLL_MS` 控制解析补捞间隔，`PUBLISH_POLL_MS` 默认与其相同。SSE 的 `progress` 事件报告写图进度，发布成功后才发送 `end/done`。
 
 进度连接建立时，Spring 在同一次 MySQL 查询中校验访客归属并读取任务状态和最新事件 ID。连接追上最新事件后，每个实例每隔约 400 毫秒合并查询仍有订阅的活动任务，每批最多 128 个任务。最近一页事件按任务共享，每个连接独立保存游标，落后的连接按索引补读。最后一个连接退出时释放该任务的内存页。跨实例重连续读使用同一个数据库游标。查询 `GET /tasks/{id}` 时，任务状态与事件总数在同一条带归属检查的 SQL 中读取，返回同一个已提交快照。
 
