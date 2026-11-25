@@ -1,5 +1,6 @@
 package org.videoparse;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -77,13 +78,12 @@ class AnalysisGraph {
     boolean hasSnapshot(String job, String video) throws IOException {
         var rows = query("""
             MATCH (a:VPAnalysis {id:$job})
-            RETURN a.result IS NOT NULL AND EXISTS {
+            RETURN CASE WHEN EXISTS {
                 MATCH (:VPVideo {id:$video})-[:HAS_ANALYSIS]->(a)
-            }
+            } THEN a.result ELSE null END
             """, Map.of("job",job, "video",video));
         if (rows.isEmpty()) return false;
-        if (rows.size() != 1 || !rows.get(0).path("row").path(0).booleanValue())
-            throw new IOException("图库中的任务快照与视频不一致");
+        readResult(rows);
         return true;
     }
 
@@ -93,9 +93,15 @@ class AnalysisGraph {
     }
 
     JsonNode result(String job) throws IOException {
-        var rows = query("MATCH (a:VPAnalysis {id:$job}) RETURN a.result", Map.of("job",job));
-        if (rows.isEmpty()) throw new IOException("已发布的 Neo4j 解析结果缺失");
-        return json.readTree(rows.get(0).path("row").get(0).textValue());
+        return readResult(query("MATCH (a:VPAnalysis {id:$job}) RETURN a.result", Map.of("job",job)));
+    }
+
+    private JsonNode readResult(JsonNode rows) throws IOException {
+        var value = rows.path(0).path("row").path(0);
+        if (rows.size() != 1 || !value.isTextual()) throw new IOException("图库中的解析结果缺失或格式无效");
+        var result = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value.textValue());
+        if (result == null || !result.isObject()) throw new IOException("图库中的解析结果需要是 JSON 对象");
+        return result;
     }
 
     List<EvidenceCorpus.Passage> passages(String job) throws IOException {

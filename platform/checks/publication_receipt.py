@@ -9,6 +9,13 @@ from sqlalchemy import create_engine, text
 
 
 def run(base, neo4j, database):
+    def cypher(statement, params):
+        reply = requests.post(neo4j + "/db/neo4j/tx/commit",
+                              auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "")),
+                              json={"statements": [{"statement": statement, "parameters": params}]}, timeout=15)
+        reply.raise_for_status()
+        assert reply.json()["errors"] == []
+
     session = requests.Session()
     response = session.get(base + "/v2/session", timeout=5)
     response.raise_for_status()
@@ -22,9 +29,12 @@ def run(base, neo4j, database):
                     INSERT INTO videos(id,title,duration,status,created_at,owner_id)
                     VALUES (:video,'Receipt',5,'analyzed',NOW(),:owner)
                     """), {"video": video, "owner": owner})
-        for video, quote in ((published, "queue recovery"), (published, "queue revised"), (unrelated, "queue mismatch")):
+        valid = '{"title":"recovered"}'
+        heads = {}
+        for video, quote, stored in ((published, "queue recovery", valid), (published, "queue invalid", "[]"),
+                                     (published, "queue revised", valid), (unrelated, "queue mismatch", valid)):
             job = uuid.uuid4().hex
-            matches = video == published
+            matches = video == published and stored == valid
             # Reproduce a graph commit whose MySQL version switch has not happened.
             statement = """
                 MERGE (v:VPVideo {id:$video})
@@ -32,12 +42,8 @@ def run(base, neo4j, database):
                 CREATE (a)-[:HAS_EVIDENCE]->(:VPEvidence {id:0,source:'speech',start:2.0,end:5.0,
                     text:$quote,frame:''})
                 """
-            params = {"video": published, "job": job, "result": '{"title":"recovered"}', "quote": quote}
-            reply = requests.post(neo4j + "/db/neo4j/tx/commit",
-                                  auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "")),
-                                  json={"statements": [{"statement": statement, "parameters": params}]}, timeout=15)
-            reply.raise_for_status()
-            assert reply.json()["errors"] == []
+            params = {"video": published, "job": job, "result": stored, "quote": quote}
+            cypher(statement, params)
             with engine.begin() as db:
                 db.execute(text("""
                     INSERT INTO vp_job(id,video_id,active_video,status,publish_attempts)
@@ -55,15 +61,27 @@ def run(base, neo4j, database):
             assert status == ("done" if matches else "error"), status
             with engine.connect() as db:
                 head = db.execute(text("SELECT job_id FROM vp_graph_head WHERE video_id=:v"), {"v": video}).scalar()
-                assert head == (job if matches else None)
+                if matches:
+                    heads[video] = job
+                assert head == heads.get(video)
             if matches:
                 assert session.get(base + "/result/" + video, timeout=5).json()["result"]["title"] == "recovered"
                 hits = session.get(base + "/v2/videos/" + video + "/evidence", params={"q": "queue"}, timeout=5)
                 assert hits.json()["hits"][0]["text"] == quote
+        update_result = "MATCH (a:VPAnalysis {id:$job}) SET a.result=$value"
+        paths = ["/result/" + published, "/v2/library/videos/" + published]
+        for damaged in (42, "[]", "{} trailing"):
+            cypher(update_result, {"job": heads[published], "value": damaged})
+            for path in paths:
+                reply = session.get(base + path, timeout=5)
+                assert reply.status_code == 503 and reply.json()["success"] is False, (path, reply.status_code)
+        cypher(update_result, {"job": heads[published], "value": valid})
+        for path in paths:
+            assert session.get(base + path, timeout=5).json()["result"]["title"] == "recovered"
     finally:
         engine.dispose()
         session.close()
-    print("PASS committed snapshot recovered without workspace; different video's snapshot rejected")
+    print("PASS recovered intact snapshots and preserved the last publication after invalid receipts")
 
 
 if __name__ == "__main__":
