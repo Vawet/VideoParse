@@ -36,13 +36,16 @@ class AnalysisResults {
     }
 
     private Optional<String> published(String video) {
-        return db.sql("SELECT job_id FROM vp_graph_head WHERE video_id=?").param(video).query(String.class).optional();
+        var head = db.sql("SELECT job_id FROM vp_graph_head WHERE video_id=?").param(video).query(String.class).optional();
+        if (head.isPresent() && !graph.enabled())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"此实例尚未配置已发布结果所需的图库");
+        return head;
     }
 
     JsonNode result(String video) throws IOException {
         var file = resultFile(video);
         var head = published(video);
-        if (head.isPresent() && graph.enabled()) {
+        if (head.isPresent()) {
             try { return graph.result(head.get()); }
             catch (IOException ex) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"暂时无法读取已发布结果",ex); }
         }
@@ -52,7 +55,7 @@ class AnalysisResults {
     List<EvidenceCorpus.Passage> evidence(String video) throws IOException {
         resultFile(video);
         var head = published(video);
-        if (head.isPresent() && graph.enabled()) {
+        if (head.isPresent()) {
             try { return graph.passages(head.get()); }
             catch (IOException ex) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"暂时无法读取已发布证据",ex); }
         }
