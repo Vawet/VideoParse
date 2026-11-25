@@ -40,29 +40,16 @@ class DocumentAskController {
 
     private List<Claim> generate(String question, List<DocumentSearch.Passage> hits) throws InterruptedException {
         try {
-            var result = tools.invoke("document_answer", Map.of("question", question,
-                "excerpts", hits.stream().map(DocumentSearch.Passage::body).toList()));
+            var excerpts = hits.stream().map(DocumentSearch.Passage::body).toList();
+            var result = tools.invoke("document_answer", Map.of("question", question, "excerpts", excerpts));
             var body = result.getBody();
-            if (!result.getStatusCode().is2xxSuccessful() || body == null || !body.path("claims").isArray())
-                return List.of();
+            if (!result.getStatusCode().is2xxSuccessful() || body == null) return List.of();
             var verified = new ArrayList<Claim>();
-            for (var claim : body.path("claims")) {
-                var id = claim.path("id");
-                var text = claim.path("answer");
-                if (!id.isIntegralNumber() || !id.canConvertToInt() || id.intValue() < 1 || id.intValue() > hits.size()
-                        || !text.isTextual() || text.textValue().isBlank()) continue;
-                var quoted = claim.path("quote");
-                if (!quoted.isTextual()) continue;
-                String literal = quoted.textValue();
-                String quote = literal.strip();
-                if (quote.codePointCount(0, quote.length()) < 4) continue;
-                var hit = hits.get(id.intValue() - 1);
-                int offset = hit.body().indexOf(literal);
-                if (offset < 0) continue;
-                offset += literal.indexOf(quote);
-                int first = hit.firstLine() + newlines(hit.body().substring(0, offset));
-                verified.add(new Claim(id.intValue(), text.textValue().strip(), quote, first, first + newlines(quote)));
-                if (verified.size() == 4) break;
+            for (var claim : CitedClaim.verify(body.path("claims"),
+                    id -> id >= 1 && id <= excerpts.size() ? excerpts.get(id - 1) : null, 4)) {
+                var hit = hits.get(claim.id() - 1);
+                int first = hit.firstLine() + newlines(hit.body().substring(0, claim.offset()));
+                verified.add(new Claim(claim.id(), claim.answer(), claim.quote(), first, first + newlines(claim.quote())));
             }
             return verified;
         } catch (ResponseStatusException ex) {
