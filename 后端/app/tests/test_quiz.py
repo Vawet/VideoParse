@@ -157,6 +157,15 @@ def test_extract_citations_validates_against_transcript(learn_env):
     assert not by["00:09:59"]["valid"] and not by["01:01:05"]["valid"]
 
 
+def test_ocr_citation_checks_the_frame_even_when_speech_covers_the_same_second(learn_env):
+    from app.agent.loop import extract_citations
+    visual = [{"start": 12.4, "frame": "3.png", "text": "板书中的公式"}]
+    spans = extract_citations("[00:12] [画面 00:12] [画面 00:13]", learn_env.segments, visual)
+    assert len(spans) == 3 and "查询" in spans[0]["text"]
+    assert spans[1]["valid"] and spans[1]["text"] == "板书中的公式" and spans[1]["frame"] == "3.png"
+    assert not spans[2]["valid"]
+
+
 class _Seq:
     """每次调用 run_agent 依次返回预设回答，并记录收到的消息。"""
     def __init__(self, *answers):

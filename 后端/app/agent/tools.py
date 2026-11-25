@@ -440,10 +440,23 @@ def get_video_overview(ws):
 _tokens = _tokens_set
 
 
-@tool("search_transcript", "在字幕中按关键词检索，返回最相关的片段及时间戳。",
+@tool("search_transcript", "检索相关字幕；平台也检索画面文字，source=ocr 时返回实际截帧时间。",
       {"query": {"type": "string"}, "top_k": {"type": "integer", "description": "返回条数，默认5"}},
       ["query"], groups=("chat",))
 def search_transcript(ws, query, top_k=5):
+    endpoint = os.getenv("PLATFORM_INTERNAL_URL")
+    if endpoint:
+        import requests
+        from urllib.parse import quote
+        try:
+            response = requests.get(f"{endpoint.rstrip('/')}/v2/videos/{quote(ws.video_id, safe='')}/evidence",
+                                    params={"q": query}, timeout=(2, 45))
+            response.raise_for_status()
+            hits = [{**h, "time": media.seconds_to_hhmmss(h["start"])}
+                    for h in response.json()["hits"][:max(1, int(top_k))]]
+            return {"hits": hits} if hits else {"hits": [], "note": "字幕和画面文字都没有匹配依据"}
+        except (requests.RequestException, ValueError, KeyError):
+            log.warning("平台证据查询暂不可用，回退本地字幕")
     segs = _transcript(ws)["segments"]
     if not segs:
         return {"error": "没有字幕数据"}

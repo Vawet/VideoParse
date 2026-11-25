@@ -80,6 +80,8 @@ services:
       PLATFORM_AI_KEY: ${PLATFORM_AI_KEY:-}
       PLATFORM_AI_URL: ${PLATFORM_AI_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       PLATFORM_AI_MODEL: ${PLATFORM_AI_MODEL:-qwen-plus}
+      PLATFORM_INTERNAL_URL: http://127.0.0.1:9090
+      SERVER_FORWARD_HEADERS_STRATEGY: native
       PARSE_ENGINE: ${PARSE_ENGINE:-java}
       WORKER_DIR: /srv
       ROCKETMQ_ENABLED: "true"

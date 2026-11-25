@@ -232,15 +232,23 @@ NOT_MENTIONED = "视频中未提及"
 CITE_TOLERANCE = 2.0  # 秒
 
 
-def extract_citations(answer: str, segments):
+def extract_citations(answer: str, segments, visual=()):
     """抽取回答里的时间戳并用字幕核对：落在某段字幕(±2s)内才算有效，并附上该段原文。"""
     out, seen = [], set()
     for m in _TS_RE.finditer(answer or ""):
         a, b, c = m.groups()
         sec = int(a) * 3600 + int(b) * 60 + int(c) if c is not None else int(a) * 60 + int(b)
-        if sec in seen:
+        is_frame = bool(re.search(r"[\[【]画面\s*$", answer[max(0, m.start()-12):m.start()]))
+        key = (is_frame, sec)
+        if key in seen:
             continue
-        seen.add(sec)
+        seen.add(key)
+        if is_frame:
+            frame = next((f for f in visual if int(f["start"]) == sec), None)
+            out.append({"time": media.seconds_to_hhmmss(sec), "seconds": sec, "source": "ocr",
+                        "frame": frame["frame"] if frame else "", "valid": frame is not None,
+                        "text": frame["text"] if frame else ""})
+            continue
         seg = (next((s for s in segments if s["start_time"] <= sec < s["end_time"]), None)
                or next((s for s in segments
                         if s["start_time"] - CITE_TOLERANCE <= sec <= s["end_time"] + CITE_TOLERANCE), None))
@@ -349,14 +357,15 @@ def chat_with_video(ws: Workspace, history, question, emit=lambda e: None, clien
             segments = tools._segments(ws)
         except Exception:  # noqa: BLE001
             segments = []
-        citations = extract_citations(answer, segments)
-        if segments and NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
+        visual = ws.load("ocr", [])
+        citations = extract_citations(answer, segments, visual)
+        if (segments or visual) and NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
             messages.append({"role": "assistant", "content": answer})
             messages.append({"role": "user", "content": (
                 "你的回答缺少有效的字幕时间戳依据。请用 search_transcript / get_transcript_window 找到依据，"
                 "在每条结论后标注 [mm:ss]；如果字幕确实没有依据，请直接回答“视频中未提及”。")})
             answer = _run_chat("chat", ws, messages, emit, max_steps=6)
-            citations = extract_citations(answer, segments)
+            citations = extract_citations(answer, segments, visual)
 
         new_history = [m for m in history if m.get("role") in ("user", "assistant")]
         new_history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]

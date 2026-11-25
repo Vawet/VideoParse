@@ -44,12 +44,13 @@ class VectorIndex {
         String rev=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(docs)));
         var match=List.of(condition("video",video),condition("revision",rev));
         var filter=Map.of("must",match);
-        float[] query=model.embed(q).content().vector();
         var info=call("GET","",null);
+        if(info.statusCode()!=404) require(info);
+        float[] query=model.embed(q).content().vector();
         if(info.statusCode()==404) {
             var created=call("PUT","",Map.of("vectors",Map.of("size",query.length,"distance","Cosine")));
             if(created.statusCode()!=409) require(created);
-        } else require(info);
+        }
         var count=require(call("POST","/points/count",Map.of("filter",filter,"exact",true))).path("count").asInt();
         if(count!=docs.size()) {
             if(!indexing.tryAcquire()) return List.of();
