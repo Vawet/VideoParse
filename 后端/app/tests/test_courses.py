@@ -45,6 +45,23 @@ def test_course_citations_validate_title_and_time(course):
     ok = [c for c in cites if c["valid"]]
     assert [(c["video_id"], c["seconds"]) for c in ok] == [("va", 5), ("vb", 10)]
     assert len(cites) == 4 and not any(c["valid"] for c in cites[2:])
+    for label in ("第1讲", "v", "第1讲 梯度下降补充资料"):
+        citation, = loop.extract_course_citations(f"[{label} 00:05]", videos)
+        assert citation["valid"] is False and citation["video_id"] is None
+
+
+def test_course_chat_disambiguates_duplicate_titles(course, monkeypatch):
+    from app import learning_api
+
+    for video_id in ("va", "vb"):
+        repo.register_video(video_id, "算法入门")
+    answers = iter(["参见 [算法入门 00:05]", "参见 [video_id=vb 00:05]"])
+    monkeypatch.setattr(loop, "run_agent", lambda *args, **kwargs: next(answers))
+    reply, status = learning_api.chat({"course_id": course, "question": "课上如何计算梯度？"}, "/api")
+    assert status == 200 and reply["success"]
+    citation, = reply["citations"]
+    assert citation["valid"] and citation["video_id"] == "vb"
+    assert citation["video_title"] == "算法入门" and citation["text"] == B[0]["text"]
 
 
 def test_chat_with_course_retries_without_citation(course, monkeypatch):

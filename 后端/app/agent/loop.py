@@ -378,15 +378,22 @@ COURSE_NOT_MENTIONED = "课程中未提及"
 
 
 def extract_course_citations(answer: str, videos):
-    """videos: [{id, title, segments}]。校验 [视频标题 mm:ss]：标题须对应课程里的视频，时间须落在其字幕内。"""
+    """校验课程内的唯一完整标题或视频编号，并取对应时间段的字幕。"""
+    by_id = {video["id"]: video for video in videos}
+    by_title = {}
+    for video in videos:
+        title = video["title"]
+        by_title[title] = None if title in by_title else video
     out, seen = [], set()
     for m in _COURSE_CITE_RE.finditer(answer or ""):
         title, ts = m.group(1).strip(), m.group(2)
         parts = [int(x) for x in ts.split(":")]
         sec = parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3 else parts[0] * 60 + parts[1]
-        video = next((v for v in videos if v["title"] == title), None) or \
-            next((v for v in videos if title and (title in v["title"] or v["title"] in title or v["id"].startswith(title))), None)
-        key = (video["id"] if video else title, sec)
+        if title.startswith("video_id="):
+            video = by_id.get(title.removeprefix("video_id="))
+        else:
+            video = by_title.get(title, by_id.get(title))
+        key = (video is not None, video["id"] if video else title, sec)
         if key in seen:
             continue
         seen.add(key)
@@ -417,6 +424,7 @@ def chat_with_course(course_id, history, question, emit=lambda e: None, client_i
             messages.append({"role": "assistant", "content": answer})
             messages.append({"role": "user", "content": (
                 "你的回答缺少有效的出处。请用 search_course / get_video_window 找到依据，在每条结论后标注 [视频标题 mm:ss]；"
+                "同名视频请标注 [video_id=完整编号 mm:ss]，使用工具返回的 video_id。"
                 "确实没有依据就直接回答“课程中未提及”。")})
             answer = _run_chat("course", ws, messages, emit, max_steps=6)
             citations = extract_course_citations(answer, videos)
