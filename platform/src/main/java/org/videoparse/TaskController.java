@@ -25,7 +25,7 @@ class TaskController {
     @PostMapping("/analyze/start")
     Map<String,Object> submit(@RequestBody Map<String,String> body) {
         String filename = body.getOrDefault("filepath","");
-        if (!filename.matches("[a-zA-Z0-9_-]{1,64}\\.(?i:mp4|mov|avi|mkv|flv)"))
+        if (!filename.matches("[a-zA-Z0-9_-]{1,64}\\.(?i:mp4|mov|avi|mkv|flv|webm|m4v)"))
             return Map.of("success",false,"error","无效视频文件名");
         String id = filename.substring(0,filename.lastIndexOf('.'));
         if (!id.equals(body.getOrDefault("video_id",id)) || !Files.isRegularFile(uploads.resolve(filename)))

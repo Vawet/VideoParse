@@ -1,4 +1,6 @@
-/** Thin client for the VideoParse Flask backend (see 后端/app/main.py). */
+import { resumableUpload } from "./resumable-upload";
+
+const platform = import.meta.env.VITE_PLATFORM === "true";
 
 export const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ??
@@ -34,11 +36,11 @@ const postJson = <T>(path: string, body: unknown) =>
 
 /** The upload gate: a question that must be answered before a one-time token is issued. */
 export async function getUploadGate() {
-  return request<{ required: boolean; question: string }>("/upload/question");
+  return request<{ required: boolean; question: string }>(platform ? "/v2/gate" : "/upload/question");
 }
 
 export async function verifyUploadGate(answer: string) {
-  const data = await postJson<{ token: string }>("/upload/verify", { answer });
+  const data = await postJson<{ token: string }>(platform ? "/v2/gate" : "/upload/verify", { answer });
   return data.token;
 }
 
@@ -48,6 +50,7 @@ export function uploadVideo(
   onProgress: (percent: number) => void,
   signal?: AbortSignal,
 ): Promise<{ filepath: string; video_id: string }> {
+  if (platform) return resumableUpload(API_BASE, file, token, onProgress, signal);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/upload`);
@@ -101,7 +104,8 @@ export function subscribeTask(taskId: string, onEvent: (event: AgentEvent) => vo
   };
   source.onerror = () => {
     // EventSource would retry forever; a closed stream means the task is gone.
-    if (source.readyState === EventSource.CLOSED) return;
+    if (platform && source.readyState === EventSource.CONNECTING) return;
+    if (!platform && source.readyState === EventSource.CLOSED) return;
     source.close();
     onEvent({ type: "end", status: "error", error: "与后端的事件连接中断" });
   };
