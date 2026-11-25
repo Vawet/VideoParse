@@ -1,6 +1,5 @@
 package org.videoparse;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,13 +11,14 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 @RestController
 class TaskController {
     private final Visitor visitor;
+    private final TaskEventStreams streams;
     private final JobMapper jobs;
     private final JobService service;
     private final Path uploads;
     private final AnalysisResults results;
-    TaskController(JobMapper jobs, JobService service, AnalysisResults results, Visitor visitor, @Value("${videoparse.data}") Path root) {
+    TaskController(JobMapper jobs, JobService service, AnalysisResults results, TaskEventStreams streams, Visitor visitor, @Value("${videoparse.data}") Path root) {
         this.visitor=visitor;this.jobs = jobs; this.service = service; this.uploads = root.resolve("uploads");
-        this.results=results;
+        this.results=results; this.streams=streams;
     }
 
     @GetMapping("/health")
@@ -77,24 +77,8 @@ class TaskController {
     @GetMapping(value="/tasks/{id}/events",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
     ResponseEntity<StreamingResponseBody> events(@PathVariable String id,
         @RequestHeader(value="Last-Event-ID",defaultValue="0") long cursor) {
-        require(id);
-        return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noStore()).header("X-Accel-Buffering","no").body(out -> {
-            long after=Math.max(0,cursor), heartbeat=0;
-            for (;;) {
-                var job=jobs.get(id);
-                var batch=jobs.events(id,after);
-                for (var e:batch) {
-                    out.write(("id: "+e.id()+"\ndata: "+e.payload()+"\n\n").getBytes(StandardCharsets.UTF_8));
-                    after=e.id();
-                }
-                if (!batch.isEmpty()) { out.flush(); continue; }
-                if (job.status().equals("done") || job.status().equals("error")) return;
-                if (System.nanoTime()-heartbeat>10_000_000_000L || heartbeat==0) {
-                    out.write(": keep-alive\n\n".getBytes(StandardCharsets.UTF_8)); out.flush();
-                    heartbeat=System.nanoTime();
-                }
-                try { Thread.sleep(400); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); return; }
-            }
-        });
+        String jobId = require(id).id();
+        return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noStore())
+            .header("X-Accel-Buffering", "no").body(out -> streams.write(jobId, cursor, out));
     }
 }

@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.*;
 public interface JobMapper {
     record Job(String id, String videoId, String status, String error) {}
     record Event(long id, String payload) {}
+    record Tail(String status, long lastEvent) {
+        boolean finished() { return "done".equals(status) || "error".equals(status); }
+    }
 
     @Insert("INSERT INTO vp_job(id,video_id,active_video,status) VALUES(#{id},#{video},#{video},'queued') ON DUPLICATE KEY UPDATE id=id")
     void submit(String id, String video);
@@ -43,6 +46,11 @@ public interface JobMapper {
     void event(String job,String json);
     @Select("SELECT id,CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload FROM vp_event WHERE job_id=#{job} AND id>#{after} ORDER BY id LIMIT 100")
     List<Event> events(String job,long after);
+    @Select("""
+        SELECT j.status, COALESCE((SELECT MAX(e.id) FROM vp_event e WHERE e.job_id=j.id), 0) AS last_event
+        FROM vp_job j WHERE j.id=#{id}
+        """)
+    Tail tail(String id);
     @Select("SELECT COUNT(*) FROM vp_event WHERE job_id=#{id}")
     long count(String id);
 }
