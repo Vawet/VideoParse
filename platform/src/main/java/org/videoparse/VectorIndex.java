@@ -84,6 +84,31 @@ class VectorIndex {
         return hits;
     }
 
+    private void indexVideoBatch(String video, String revision, List<EvidenceCorpus.Passage> batch,
+                                boolean partiallyIndexed) throws Exception {
+        var missing = new LinkedHashMap<String,EvidenceCorpus.Passage>();
+        for (var doc : batch) {
+            String key = video + "/" + revision + "/" + doc.id();
+            missing.put(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString(), doc);
+        }
+        if (partiallyIndexed) {
+            var existing = require(call("POST", "/points", Map.of("ids",missing.keySet(),
+                "with_payload",false, "with_vector",false)));
+            if (!existing.isArray()) throw new java.io.IOException("Qdrant 未返回已写入的证据编号");
+            for (var point : existing) missing.remove(point.path("id").textValue());
+        }
+        if (missing.isEmpty()) return;
+        var texts = missing.values().stream().map(EvidenceCorpus.Passage::text)
+            .map(s -> s.substring(0, Math.min(s.length(), 4000))).toList();
+        var embeddings = embed(texts, false);
+        var points = new ArrayList<Object>();
+        for (var entry : missing.entrySet()) {
+            points.add(Map.of("id",entry.getKey(), "vector",embeddings[points.size()], "payload",
+                Map.of("video",video, "revision",revision, "index",entry.getValue().id())));
+        }
+        require(call("PUT", "/points?wait=true", Map.of("points",points)));
+    }
+
     List<Integer> ranked(String video,EvidenceCorpus.Index index,String q) throws Exception {
         var docs=index.passages();
         if(endpoint.isBlank() || docs.isEmpty()) return List.of();
@@ -102,15 +127,7 @@ class VectorIndex {
             try {
                 for(int i=0;i<docs.size();i+=24) {
                     var batch=docs.subList(i,Math.min(i+24,docs.size()));
-                    var embeddings=embed(batch.stream().map(d->d.text().substring(0,Math.min(d.text().length(),4000))).toList(),false);
-                    var points=new ArrayList<Object>();
-                    for(int n=0;n<batch.size();n++) {
-                        var doc=batch.get(n);
-                        var id=UUID.nameUUIDFromBytes((video+"/"+rev+"/"+doc.id()).getBytes(StandardCharsets.UTF_8));
-                        points.add(Map.of("id",id.toString(),"vector",embeddings[n],"payload",
-                                    Map.of("video",video,"revision",rev,"index",doc.id())));
-                    }
-                    require(call("PUT","/points?wait=true",Map.of("points",points)));
+                    indexVideoBatch(video,rev,batch,count>0);
                 }
             } finally {indexing.release();}
         }
