@@ -28,8 +28,8 @@ def run(base):
                                                             timeout=10).status_code, range(2)))
 
     assert concurrent_posts(add, question) == [200, 200]
-    def next_card():
-        response = owner.get(queue, timeout=10)
+    def next_card(document=None, session=owner):
+        response = session.get(queue, params={"documentId": document}, timeout=10)
         response.raise_for_status()
         return response.json()["next"]
     card = next_card()
@@ -58,7 +58,19 @@ def run(base):
     owner.post(queue + "/" + new_card["id"] + "/rate",
                json={"revision": 0, "rating": "remembered"}, timeout=10).raise_for_status()
     assert abs(next_card()["dueEpoch"] - time.time() - 86400) < 20
-    print("PASS owner isolation, source lines, concurrent enrollment and grading, recall timing and removal")
+
+    another = owner.post(api + "/documents", files={"file": ("图论.md", "# 图论\n图由顶点和边组成。".encode())}, timeout=10)
+    another.raise_for_status()
+    graph = another.json()["document"]["id"]
+    assert next_card(graph) is None
+    owner.post(api + f"/documents/{graph}/chunks/0/review", json={"question": "图由什么组成？"}, timeout=10).raise_for_status()
+    global_card = next_card()
+    assert (global_card["docId"], global_card["dueCount"], global_card["total"]) == (graph, 1, 2)
+    for document, due in [(doc, 0), (graph, 1)]:
+        scoped = next_card(document)
+        assert (scoped["docId"], scoped["dueCount"], scoped["total"]) == (document, due, 1)
+        assert next_card(document, other) is None
+    print("PASS private global and single-document queues, counts, citation lines, concurrent feedback and recall timing")
 
 
 if __name__ == "__main__":

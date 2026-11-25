@@ -147,7 +147,7 @@ function LibraryPage({selected}: {selected: string}) {
                 </div>)}
             </article>}
           </section>
-          <ReviewQueue updated={reviewUpdated} openSource={read} onRemove={()=>setSaved(new Set())}/>
+          <ReviewQueue documentId={selected} updated={reviewUpdated} openSource={read} onRemove={()=>setSaved(new Set())}/>
           {reading && <section className={`rounded-xl border border-border bg-card p-5 ${selected ? "order-first" : ""}`}>
             <h2 className="mb-3 flex items-center gap-2 font-semibold"><FileText size={16}/>{selected === reading.doc.id ? "原文" : reading.doc.name+" · 原文"}</h2>
             {reading.lines.length > PAGE_LINES && <nav aria-label="原文分页" className="mb-3 flex items-center gap-3 text-sm">

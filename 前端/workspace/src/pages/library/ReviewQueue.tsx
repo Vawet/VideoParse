@@ -7,7 +7,8 @@ type Card = {
   question: string; revision: number; dueEpoch: number; dueCount: number; total: number;
 };
 
-export function ReviewQueue({updated, openSource, onRemove}: {
+export function ReviewQueue({documentId, updated, openSource, onRemove}: {
+  documentId?: string;
   updated: number;
   openSource: (id: string, from: number, to: number) => void;
   onRemove: () => void;
@@ -20,11 +21,12 @@ export function ReviewQueue({updated, openSource, onRemove}: {
   const [error, setError] = useState("");
   useEffect(() => {
     let current = true;
-    api<{next: Card | null}>("/review").then(data => {
+    const query = documentId ? "?" + new URLSearchParams({documentId}) : "";
+    api<{next: Card | null}>("/review" + query).then(data => {
       if (current) { setCard(data.next); setLoaded(true); }
     }).catch(e => { if (current) setError(e.message); });
     return () => { current = false; };
-  }, [updated, revision]);
+  }, [documentId, updated, revision]);
   useEffect(() => {
     if (!card || card.dueCount > 0) return;
     const delay = Math.max(1000, card.dueEpoch * 1000 - Date.now() + 1000);
@@ -49,13 +51,16 @@ export function ReviewQueue({updated, openSource, onRemove}: {
   }
 
   const key = card ? card.id + "/" + card.revision : "";
-  return <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-label="文档复习">
+  const title = documentId ? "本篇复习" : "文档复习";
+  return <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-label={title}>
     <div className="flex items-baseline justify-between">
-      <h2 className="font-semibold">文档复习</h2>
+      <h2 className="font-semibold">{title}</h2>
       {card && <span className="text-xs text-muted-foreground">{card.dueCount} 张待复习 · 共 {card.total} 张</span>}
     </div>
     {error && <p role="alert" className="text-sm">{error} <button className="underline" onClick={() => {setError(""); setRevision(r=>r+1);}}>刷新</button></p>}
-    {!card && <p className="text-sm text-muted-foreground">{loaded ? "在问答引用下点击「加入复习」保存第一张卡片。" : "正在读取复习队列…"}</p>}
+    {!card && <p className="text-sm text-muted-foreground">{loaded
+      ? documentId ? "这篇笔记还没有复习卡。可从本篇的问答引用中加入。" : "在问答引用下点击「加入复习」保存第一张卡片。"
+      : "正在读取复习队列…"}</p>}
     {card && <>
       {card.dueCount === 0 && <p className="text-sm text-muted-foreground">下次复习 · {new Date(card.dueEpoch * 1000).toLocaleString()}</p>}
       <p className="text-sm font-medium">{card.question}</p>
