@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -21,8 +22,11 @@ class DocumentInterviewController {
     private final JdbcClient db;
     private final StudyTools tools;
     private final ObjectMapper json;
-    DocumentInterviewController(Visitor visitor,DocumentLibrary library,JdbcClient db,StudyTools tools,ObjectMapper json) {
+    private final TransactionTemplate tx;
+    DocumentInterviewController(Visitor visitor,DocumentLibrary library,JdbcClient db,StudyTools tools,ObjectMapper json,
+                                TransactionTemplate tx) {
         this.visitor=visitor; this.library=library; this.db=db; this.tools=tools; this.json=json;
+        this.tx=tx;
     }
 
     private JsonNode model(Map<String,?> params) throws InterruptedException {
@@ -35,7 +39,9 @@ class DocumentInterviewController {
 
     private Exercise require(String id) {
         return db.sql("""
-            SELECT i.id,d.id AS doc,d.name,c.first_line,c.last_line,i.question,i.points,i.revision,i.answer,i.feedback
+            SELECT i.id,d.id AS doc,d.name,c.first_line,c.last_line,i.question,i.points,i.revision,
+                   CASE WHEN NOT i.repeat_pending THEN i.answer END AS answer,
+                   CASE WHEN NOT i.repeat_pending THEN i.feedback END AS feedback
             FROM vp_doc_interview i JOIN vp_document d ON d.id=i.doc_id
             JOIN vp_doc_chunk c ON c.doc_id=i.doc_id AND c.ordinal_no=i.ordinal_no
             WHERE d.owner_id=? AND i.id=? AND i.question<>''
@@ -43,12 +49,12 @@ class DocumentInterviewController {
                 ()->new ResponseStatusException(HttpStatus.NOT_FOUND,"面试题不存在"));
     }
 
-    private Map<String,Object> view(Exercise e, boolean showFeedback) throws Exception {
+    private Map<String,Object> view(Exercise e) throws Exception {
         var question=new LinkedHashMap<String,Object>();
         question.put("id",e.id()); question.put("question",e.question()); question.put("revision",e.revision());
         question.put("doc",e.doc()); question.put("name",e.name());
         question.put("firstLine",e.firstLine()); question.put("lastLine",e.lastLine());
-        if (showFeedback && e.feedback()!=null) {
+        if (e.feedback()!=null) {
             question.put("answer",e.answer()); question.put("feedback",json.readTree(e.feedback()));
         }
         return Map.of("success",true,"exercise",question);
@@ -64,7 +70,7 @@ class DocumentInterviewController {
             WHERE d.owner_id=? AND i.question<>''
             """+(documentId==null?"":" AND d.id=?")+" ORDER BY i.practiced_at DESC,i.id LIMIT 1")
             .params(args).query(String.class).optional();
-        return id.isEmpty()? Map.of("success",true) : view(require(id.get()),true);
+        return id.isEmpty()? Map.of("success",true) : view(require(id.get()));
     }
 
     @PostMapping("/next")
@@ -104,11 +110,22 @@ class DocumentInterviewController {
                     """).params(owner,c.doc(),c.ordinal()).query(String.class).optional().orElse(null);
                 if (id==null) continue;
             }
-            db.sql("UPDATE vp_doc_interview SET practiced_at=UTC_TIMESTAMP(3) WHERE id=?").param(id).update();
-            return view(require(id),false);
+            return view(beginRound(id,owner));
         }
         throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,candidates.isEmpty()
             ?"当前范围没有含答案依据的片段，请添加包含解答的笔记。":"本批片段没有答案依据，可继续查找下一批。");
+    }
+
+    private Exercise beginRound(String id,String owner) {
+        return tx.execute(status->{
+            db.sql("""
+                UPDATE vp_doc_interview
+                SET revision=revision+IF(feedback IS NOT NULL AND NOT repeat_pending,1,0),
+                    repeat_pending=(feedback IS NOT NULL),practiced_at=UTC_TIMESTAMP(3)
+                WHERE id=? AND doc_id IN (SELECT id FROM vp_document WHERE owner_id=?)
+                """).params(id,owner).update();
+            return require(id);
+        });
     }
 
     @PostMapping("/{id}/answer")
@@ -118,15 +135,21 @@ class DocumentInterviewController {
         if (attempt.answer()==null || attempt.answer().isBlank())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请先写下回答");
         String answer=attempt.answer().strip();
-        if (attempt.supplement() && e.answer()!=null) answer=e.answer()+"\n"+answer;
+        if (attempt.supplement()) {
+            if (e.answer()==null) throw stale();
+            answer=e.answer()+"\n"+answer;
+        }
         if (answer.length()>6000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"完整回答最多 6000 字");
         var feedback=model(Map.of("question",e.question(),"points",json.readTree(e.points()),"answer",answer));
-        if (db.sql("""
-            UPDATE vp_doc_interview i JOIN vp_document d ON d.id=i.doc_id
-            SET i.answer=?,i.feedback=?,i.revision=i.revision+1,i.practiced_at=UTC_TIMESTAMP(3)
-            WHERE i.id=? AND i.revision=? AND d.owner_id=?
-            """).params(answer,feedback.toString(),id,e.revision(),visitor.id()).update()!=1) throw stale();
-        return view(require(id),true);
+        String gradedAnswer=answer;
+        return view(tx.execute(status->{
+            if (db.sql("""
+                UPDATE vp_doc_interview i JOIN vp_document d ON d.id=i.doc_id
+                SET i.answer=?,i.feedback=?,i.repeat_pending=FALSE,i.revision=i.revision+1,i.practiced_at=UTC_TIMESTAMP(3)
+                WHERE i.id=? AND i.revision=? AND d.owner_id=?
+                """).params(gradedAnswer,feedback.toString(),id,e.revision(),visitor.id()).update()!=1) throw stale();
+            return require(id);
+        }));
     }
 
     private static ResponseStatusException stale() {

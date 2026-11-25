@@ -1,0 +1,1 @@
+ALTER TABLE vp_doc_interview ADD COLUMN repeat_pending BOOLEAN NOT NULL DEFAULT FALSE;
