@@ -3,18 +3,24 @@ package org.videoparse;
 import com.fasterxml.jackson.databind.*;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.data.segment.TextSegment;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.sql.DataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 class VectorIndex {
+    private static final Logger log = LoggerFactory.getLogger(VectorIndex.class);
+    private static final List<String> FILTER_FIELDS = List.of("owner", "document", "video", "revision");
     private final ObjectMapper json;
     private final DataSource db;
     private final String endpoint,key,collection;
@@ -22,6 +28,8 @@ class VectorIndex {
     private final OpenAiEmbeddingModel model;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final Semaphore indexing=new Semaphore(1);
+    private final ReentrantLock schemaLock = new ReentrantLock();
+    private volatile long nextSchemaCheck = System.nanoTime();
     VectorIndex(ObjectMapper json,LocalEmbeddings local,DataSource db,@Value("${QDRANT_URL:}") String endpoint,@Value("${QDRANT_API_KEY:}") String key,
                 @Value("${EMBEDDING_API_KEY:}") String apiKey,@Value("${EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}") String base,
                 @Value("${PLATFORM_EMBED_MODEL:BAAI/bge-m3}") String name) {
@@ -31,14 +39,14 @@ class VectorIndex {
         this.model=apiKey.isBlank() || endpoint.isBlank()?null:OpenAiEmbeddingModel.builder()
             .baseUrl(base).modelName(name).apiKey(apiKey).timeout(Duration.ofSeconds(30)).maxRetries(0).build();
     }
-    private HttpResponse<String> call(String verb,String path,Object body) throws Exception {
+    private HttpResponse<String> call(String verb,String path,Object body) throws IOException, InterruptedException {
         var b=HttpRequest.newBuilder(URI.create(endpoint+"/collections/"+collection+path))
                 .timeout(Duration.ofSeconds(10)).header("Content-Type","application/json");
         if(!key.isBlank()) b.header("api-key",key);
         return http.send(b.method(verb,body==null?HttpRequest.BodyPublishers.noBody():
                     HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
     }
-    private JsonNode require(HttpResponse<String> r) throws Exception {
+    private JsonNode require(HttpResponse<String> r) throws IOException {
         if(r.statusCode()/100!=2) throw new java.io.IOException("Qdrant HTTP "+r.statusCode());
         return json.readTree(r.body()).path("result");
     }
@@ -50,9 +58,34 @@ class VectorIndex {
     boolean configured() { return !endpoint.isBlank(); }
     String space() { return collection; }
 
+    private void prepareFilterIndexes() throws InterruptedException {
+        if (System.nanoTime() - nextSchemaCheck < 0) return;
+        schemaLock.lockInterruptibly();
+        try {
+            if (System.nanoTime() - nextSchemaCheck < 0) return;
+            var info = call("GET", "", null);
+            if (info.statusCode() == 404) return;
+            var schema = require(info).path("payload_schema");
+            if (!schema.isObject()) throw new IOException("Qdrant 未返回过滤索引信息");
+            for (String field : FILTER_FIELDS) {
+                if (!schema.has(field)) require(call("PUT", "/index?wait=true",
+                    Map.of("field_name",field, "field_schema","keyword")));
+            }
+            nextSchemaCheck = System.nanoTime() + Duration.ofMinutes(10).toNanos();
+        } catch (IOException ex) {
+            // Read-only deployments can still query when their filtering policy permits it.
+            nextSchemaCheck = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+            log.warn("Qdrant 过滤索引准备失败：{}", ex.getMessage());
+        } finally {
+            schemaLock.unlock();
+        }
+    }
+
     private void createCollection(int dimension) throws Exception {
         var created=call("PUT","",Map.of("vectors",Map.of("size",dimension,"distance","Cosine")));
         if(created.statusCode()!=409) require(created);
+        nextSchemaCheck = System.nanoTime();
+        prepareFilterIndexes();
     }
 
     void indexDocument(String owner,String doc,List<MarkdownSections.Chunk> chunks) throws Exception {
@@ -73,6 +106,7 @@ class VectorIndex {
 
     record DocHit(String doc,int ordinal) {}
     List<DocHit> documents(String owner,String doc,String question) throws Exception {
+        prepareFilterIndexes();
         var conditions=new ArrayList<Object>();
         conditions.add(condition("owner",owner));
         if (doc!=null) conditions.add(condition("document",doc));
@@ -142,6 +176,7 @@ class VectorIndex {
     List<Integer> ranked(String video,EvidenceCorpus.Index index,String q) throws Exception {
         var docs=index.passages();
         if(endpoint.isBlank() || docs.isEmpty()) return List.of();
+        prepareFilterIndexes();
         String rev=index.vectorRevision(json);
         var match=List.of(condition("video",video),condition("revision",rev));
         var filter=Map.of("must",match);
