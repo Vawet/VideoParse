@@ -3,6 +3,7 @@ import argparse
 from contextlib import closing
 import filecmp
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -35,6 +36,36 @@ def install(path, source=None, content=None):
         os.link(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def restore_transcript(original, destination, rows, source_kind):
+    """Fill a missing transcript representation while retaining existing legacy records."""
+    if original.is_file() and not original.is_symlink():
+        if rows:
+            install(destination, source=original)
+            return rows
+        content = original.read_bytes()
+        artifact = json.loads(content)
+        if not isinstance(artifact, dict) or not isinstance(artifact.get("segments"), list):
+            raise ValueError("旧字幕缺少分段列表")
+        recovered = []
+        for i, seg in enumerate(artifact["segments"]):
+            if not isinstance(seg, dict) or not isinstance(seg.get("text"), str):
+                raise ValueError(f"旧字幕第 {i + 1} 段缺少正文")
+            try:
+                start, end = float(seg["start_time"]), float(seg["end_time"])
+            except (KeyError, TypeError, ValueError, OverflowError) as err:
+                raise ValueError(f"旧字幕第 {i + 1} 段时间戳无效") from err
+            if not (0 <= start <= end and math.isfinite(end)):
+                raise ValueError(f"旧字幕第 {i + 1} 段时间戳无效")
+            recovered.append((i, start, end, seg["text"]))
+        install(destination, content=content)
+        return recovered
+    if rows:
+        segments = [{"start_time": a, "end_time": b, "text": t} for _, a, b, t in rows]
+        artifact = {"segments": segments, "text": "\n".join(s["text"] for s in segments), "source": source_kind}
+        install(destination, content=json.dumps(artifact, ensure_ascii=False).encode())
+    return rows
 
 
 def import_one(engine, source, target, owner, old_id):
@@ -87,15 +118,11 @@ def import_one(engine, source, target, owner, old_id):
                 install(target / "frames" / video / f.name, source=f)
         work = source / "outputs" / (old_id + "_work")
         target_work = target / "outputs" / (video + "_work")
+        transcript = restore_transcript(work / "transcript.json", target_work / "transcript.json",
+                                        transcript, raw.get("transcript_source", "speech"))
         for f in work.glob("*.json"):
-            if f.is_file() and not f.is_symlink():
+            if f.name != "transcript.json" and f.is_file() and not f.is_symlink():
                 install(target_work / f.name, source=f)
-        original = work / "transcript.json"
-        if transcript and (original.is_symlink() or not original.is_file()):
-            segments = [{"start_time": a, "end_time": b, "text": t} for _, a, b, t in transcript]
-            artifact = {"segments": segments, "text": "\n".join(s["text"] for s in segments),
-                        "source": raw.get("transcript_source", "speech")}
-            install(target_work / "transcript.json", content=json.dumps(artifact, ensure_ascii=False).encode())
         install(target / "outputs" / (video + "_result.json"), content=result)
         db.execute(text("DELETE FROM transcript_chunks WHERE video_id=:video"), data)
         if transcript:
