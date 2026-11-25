@@ -33,7 +33,7 @@ export function ChatTab() {
         <span className="h-px w-6 bg-border" aria-hidden />
         <h2 className="text-[13px] text-foreground">视频问答</h2>
         <span className="hidden text-[11px] text-muted-foreground sm:inline">
-          {isLive ? "基于这个视频的字幕检索" : "基于 1,248 条字幕片段检索"}
+          {isLive ? "视频证据与联网资料" : "基于 1,248 条字幕片段检索"}
         </span>
         {messages.length > 0 ? (
           <Button
@@ -53,7 +53,7 @@ export function ChatTab() {
         {messages.length === 0 ? (
           <div className="space-y-3 rounded-xl border border-border/70 bg-card/40 p-4">
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              围绕这段视频提问,答案来自字幕检索:每一条结论都会附上时间戳和关键帧截图,点一下就能回到原片位置。
+              问视频内容可查看对应时间戳。想找课外资料，可以问“有哪些相关论文”或搜索某项技术的官方文档。
             </p>
             <div className="flex flex-wrap gap-2">
               {(isLive ? [] : EXAMPLE_QUESTIONS).map((question) => (
@@ -92,7 +92,7 @@ export function ChatTab() {
                     />
                   ))}
                 </span>
-                正在检索字幕与幻灯片,并核对时间戳…
+                正在选择来源并查找依据…
               </p>
               <div className="space-y-2">
                 <div className="h-3 w-11/12 rounded bg-border/70" />
@@ -105,7 +105,20 @@ export function ChatTab() {
               key={message.id}
               className="max-w-[92%] space-y-2.5 rounded-2xl rounded-bl-sm border border-border/70 bg-card/60 p-4 shadow-soft"
             >
-              <ChatMarkdown text={message.answer?.text ?? ""} onJump={(seconds) => seekTo(seconds)} />
+              {message.answer?.webSources ? (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold">联网资料</h3>
+                  <p className="text-sm">{message.answer.text}</p>
+                  <ol className="space-y-2">
+                    {message.answer.webSources.map((source, index) => (
+                      <li key={source.url} className="border-l-2 border-primary/30 pl-3">
+                        <a className="text-sm text-primary underline" href={source.url} target="_blank" rel="noopener noreferrer">[{index + 1}] {source.title}</a>
+                        {index > 0 && <p className="text-xs text-muted-foreground">{source.snippet}</p>}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : <ChatMarkdown text={message.answer?.text ?? ""} onJump={(seconds) => seekTo(seconds)} />}
               {message.answer?.bullets?.length ? (
                 <ul className="space-y-1.5">
                   {message.answer.bullets.map((bullet) => (
@@ -182,7 +195,7 @@ export function ChatTab() {
               submit(draft);
             }
           }}
-          placeholder={chatBusy ? "正在检索…" : "问一个关于这段视频的问题,回车发送"}
+          placeholder={chatBusy ? "正在检索…" : "问视频内容，或查找相关资料"}
           aria-label="输入问题"
           disabled={chatBusy}
           rows={2}

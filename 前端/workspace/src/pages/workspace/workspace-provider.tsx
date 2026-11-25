@@ -3,7 +3,7 @@ import { toast } from "@/components/ui/sonner";
 import { exportSvgToPng } from "@/lib/export-svg-png";
 import {
   API_BASE,
-  askVideo,
+  askDemo, askVideo,
   fetchResult,
   getUploadGate,
   startAnalyze,
@@ -443,6 +443,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (import.meta.env.VITE_PLATFORM === "true") {
+        askDemo(trimmed).then(reply => settle(reply.source === "demo"
+          ? answerQuestion(trimmed) : adaptChatAnswer(reply, DEMO_LECTURE)))
+          .catch(error => {
+            const demo = answerQuestion(trimmed);
+            settle({ ...demo, text: `自动选源暂不可用（${errorMessage(error)}）。以下来自内置示例。\n\n${demo.text}` });
+          });
+        return;
+      }
       if (chatTimer.current) window.clearTimeout(chatTimer.current);
       chatTimer.current = window.setTimeout(() => settle(answerQuestion(trimmed)), CHAT_DELAY);
     },

@@ -149,7 +149,7 @@ export function adaptResult(
 
 /** Maps a /chat reply to the ChatAnswer shape, attaching each valid citation to its chapter. */
 export function adaptChatAnswer(
-  reply: { answer: string; citations: { seconds: number; valid: boolean; text: string }[] },
+  reply: Pick<import("@/lib/api").ChatReply, "answer" | "web_sources" | "citations">,
   lecture: LectureData,
 ): ChatAnswer {
   const citations = reply.citations
@@ -167,5 +167,5 @@ export function adaptChatAnswer(
         slideId: slide?.id,
       };
     });
-  return { text: reply.answer, citations };
+  return { text: reply.answer, citations, webSources: reply.web_sources };
 }

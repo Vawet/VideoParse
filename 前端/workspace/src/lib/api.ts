@@ -213,13 +213,22 @@ export async function fetchResult(videoId: string) {
 
 export type RawCitation = { time: string; seconds: number; valid: boolean; text: string };
 
+export type WebSource = { title: string; url: string; snippet: string };
+export type ChatReply = { answer: string; source?: "video" | "course" | "web"; web_sources?: WebSource[];
+  history: unknown[]; conversation_id?: string; citations: RawCitation[] };
+
+export async function askDemo(question: string) {
+  await openWorkspace();
+  return postJson<ChatReply | { source: "demo" }>("/v2/demo/ask", { question });
+}
+
 export async function askVideo(
   videoId: string,
   question: string,
   history: unknown[],
   conversationId?: string,
 ) {
-  return postJson<{ answer: string; history: unknown[]; conversation_id?: string; citations: RawCitation[] }>("/chat", {
+  return postJson<ChatReply>("/chat", {
     video_id: videoId,
     question,
     ...(platform ? { conversation_id: conversationId } : { history, client_id: getClientId() }),

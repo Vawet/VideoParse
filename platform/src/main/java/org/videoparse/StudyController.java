@@ -30,6 +30,13 @@ class StudyController {
     @PostMapping("/chat") ResponseEntity<JsonNode> chat(@RequestBody Map<String,Object> b) throws Exception {
         return conversations.ask(b);
     }
+    @PostMapping("/v2/demo/ask") ResponseEntity<JsonNode> demo(@RequestBody Map<String,String> b) throws Exception {
+        visitor.id();
+        String question=b.get("question");
+        if (question==null || question.isBlank() || question.length()>8000)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请输入 1 至 8000 字的问题");
+        return tools.invoke("demo_chat",Map.of("question",question));
+    }
     @PostMapping("/verify") ResponseEntity<JsonNode> verify(@RequestBody Map<String,Object> b) throws Exception {
         visitor.video(identifier(b,"video_id")); return tools.invoke("verify",b);
     }

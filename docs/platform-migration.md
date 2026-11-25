@@ -30,6 +30,10 @@ V7 迁移保留旧数据，将缺少归属的资源设为私有待分配。管�
 
 在关闭上传口令的独立测试实例运行 `python3 platform/checks/ownership.py http://localhost:8088/api`，可用两个新访客回归上传和课程归属。该检查会在目标实例创建测试资源。
 
+## 问答来源
+
+问答根据提问选源。询问讲者、字幕、幻灯片和时间点时使用视频证据。询问官方文档、新进展、延伸阅读或明确要求联网时，用当前问题提取搜索词。搜索请求只发给公共搜索服务，历史对话和媒体内容留在原处理流程。网页回答附原站链接和搜索摘要。有文本模型时可从摘要生成带编号的结论，服务端核对其逐字引文。默认使用 DuckDuckGo 公共 HTML 搜索，可能受限流影响。配置 `BRAVE_SEARCH_API_KEY` 可改用 Brave Search API，费用按供应商套餐计算。
+
 ## 模型和费用
 
 - **媒体和学习工具**使用原 Python 实现。Whisper、FFmpeg、CLIP 和 Tesseract 在本机运行。讲义、视觉分析和出题等使用 `DASHSCOPE_API_KEY` 或 `DEEPSEEK_API_KEY`，可用 `LLM_PROVIDER` 选提供方。

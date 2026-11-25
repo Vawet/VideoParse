@@ -4,6 +4,7 @@ import logging
 from app.agent import loop, tools
 from app.agent.state import Workspace
 from app.db import repo
+from app.services import web_search
 from app.services import keywords as keywords_service
 from app.services import quiz as quiz_service
 from app.services import review as review_service
@@ -37,6 +38,8 @@ def chat(params, base, *, session_token=None):
     course_id = data.get("course_id")
     if not question or not (course_id or data.get("video_id")):
         return _fail("缺少 video_id/course_id 或 question")
+    if web_search.needs_web(question):
+        return web_search.web_reply(question, data.get("history") or [])
     steps = []
     emit = lambda e: steps.append(e) if e["type"] in ("tool_start",) else None  # noqa: E731
     try:
@@ -58,8 +61,15 @@ def chat(params, base, *, session_token=None):
     except Exception as e:  # noqa: BLE001
         log.exception("问答失败")
         return _fail(f"问答失败: {e}")
-    return _ok({"success": True, "answer": answer, "history": history, "citations": citations,
+    return _ok({"success": True, "source": "course" if course_id else "video", "answer": answer, "history": history, "citations": citations,
                     "tools_used": [s["tool"] for s in steps]})
+
+
+def demo_chat(params, base):
+    question = params["question"]
+    if web_search.needs_web(question):
+        return web_search.web_reply(question)
+    return _ok({"success": True, "source": "demo"})
 
 
 def review_weak(params, base):

@@ -74,6 +74,7 @@ export type LectureData = {
 };
 
 export type ChatAnswer = {
+  webSources?: import("@/lib/api").WebSource[];
   text: string;
   bullets?: string[];
   citations: Citation[];
