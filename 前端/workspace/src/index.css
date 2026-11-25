@@ -178,6 +178,17 @@
   .study-chapters { @apply max-h-[48vh] p-3; }
 }
 .study-home { container: study-home / inline-size; }
+.library-workspace { container: library-workspace / inline-size; }
+.library-panel-switch { display: none; }
+.library-panes { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+.library-chat { @apply border-l border-border; }
+@container library-workspace (max-width: 759px) {
+  .library-panel-switch { display: flex; }
+  .library-panes { grid-template-columns: minmax(0, 1fr); }
+  [data-panel="reader"] .library-chat,
+  [data-panel="chat"] .library-reader { display: none; }
+  .library-chat { border-left: 0; }
+}
 @container study-home (max-width: 580px) {
   .study-upload, .study-features { grid-template-columns: minmax(0, 1fr); }
   .study-upload > :last-child { grid-column: 1; }

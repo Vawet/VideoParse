@@ -130,12 +130,12 @@ export function DocumentChat({selected, docs, saved, openSource, onSave}: {
     } finally {request.current = null; setBusy(false);}
   }
 
-  return <section aria-label="资料 AI 对话" className="overflow-hidden rounded-xl border border-border bg-card">
-    <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+  return <section aria-label="资料 AI 对话" className="library-chat flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
       <h2 className="flex items-center gap-2 font-semibold"><Sparkles size={17} className="text-primary"/>资料 AI 对话</h2>
       <Button variant="ghost" size="sm" disabled={busy || !turns.length} onClick={reset}><MessageSquarePlus size={15}/>新对话</Button>
     </header>
-    <div ref={log} role="log" aria-label="聊天记录" className="vp-scroll max-h-[58dvh] space-y-5 overflow-y-auto px-4 py-5 sm:px-5"
+    <div ref={log} role="log" aria-label="聊天记录" className="vp-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-5"
       onScroll={e => {const el=e.currentTarget; follow.current=el.scrollHeight-el.scrollTop-el.clientHeight<50;}}>
       {!turns.length && <p className="flex items-center gap-2 text-sm text-muted-foreground"><BookOpen size={16}/>想弄懂笔记里的哪个问题？</p>}
       {turns.map((turn,i) => <article className="space-y-3" key={i}>
@@ -154,9 +154,9 @@ export function DocumentChat({selected, docs, saved, openSource, onSave}: {
         </div>
       </article>)}
     </div>
-    <form onSubmit={send} className="space-y-3 border-t border-border p-4 sm:px-5">
+    <form onSubmit={send} className="shrink-0 space-y-3 border-t border-border p-4 sm:px-5">
       <textarea aria-label="资料问题" rows={2} maxLength={1000} value={draft} onChange={e => setDraft(e.target.value)}
-        readOnly={busy} placeholder="输入问题，或继续追问…" className="block w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus-visible:outline-primary"
+        readOnly={busy} placeholder="输入问题，或继续追问…" className="block max-h-[25dvh] w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus-visible:outline-primary"
         onKeyDown={e => {if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}}/>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <select aria-label="检索范围" className="max-w-[55%] rounded-md border border-border bg-background p-1.5" value={scope} disabled={busy}
