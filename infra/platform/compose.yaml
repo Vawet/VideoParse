@@ -6,7 +6,7 @@ x-media-env: &media-env
   DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
   DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
   LLM_PROVIDER: ${LLM_PROVIDER:-}
-  UPLOAD_ANSWER: ${UPLOAD_ANSWER:?set upload passphrase}
+  UPLOAD_ANSWER: ${UPLOAD_ANSWER?set upload passphrase or leave it empty}
 
 services:
   db:

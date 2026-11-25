@@ -10,7 +10,7 @@
 python3 infra/platform/configure.py
 ```
 
-首次生成的 `infra/platform/.env` 包含数据库、缓存、对象存储、向量库凭据和上传口令。按需在该文件加入模型配置，再启动服务。
+首次生成的 `infra/platform/.env` 包含数据库、缓存、对象存储、向量库凭据和上传口令。本地工作台如需直接上传，可将该文件中的一行设为 `UPLOAD_ANSWER=`。修改后重新启动平台使配置生效。按需在该文件加入模型配置。
 
 ```bash
 docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml up --build -d
@@ -33,7 +33,7 @@ docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml exe
 
 ## 从上传到学习
 
-1. 浏览器按 5 MiB 分片并计算 SHA-256。Redis 管一次性上传凭据，MySQL 记清单，MinIO 存分片和合并对象。中断后重选同一文件可续传；大小上限为 2 GiB。
+1. 浏览器按 5 MiB 分片并计算 SHA-256。设置了上传口令时，Redis 管一次性上传凭据。MySQL 记清单，MinIO 存分片和合并对象。中断后重选同一文件可续传；大小上限为 2 GiB。
 2. Spring 在同一事务创建任务和待发送消息，RocketMQ 分发任务。MySQL 唯一键保证同一视频至多有一个活动任务，重复消息检查任务状态。消息服务短时不可用时，worker 从数据库补捞。
 3. Java 根据是否有语音编排工具，通过私有 Python 进程执行媒体计算。关键帧、转写和分析产物落在共享工作卷。每轮执行最多选择两个不同的工具修复校验问题；模型通过 LangChain4j Tool Calling 提议动作，Java 控制参数并重新校验。重启时可复用同一任务已完成的步骤。中断发生在外部调用和写入检查点之间时，该调用可能重做。`PARSE_ENGINE=python` 可切回原解析循环。
 4. 任务事件存入 MySQL。浏览器通过 SSE 接收进度、按 `Last-Event-ID` 续读。“最近解析”按视频保存本浏览器最近 15 项，重开会回放进度并打开该视频当前结果。
