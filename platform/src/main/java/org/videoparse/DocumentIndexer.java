@@ -10,27 +10,17 @@ import org.springframework.stereotype.Component;
 class DocumentIndexer {
     private final JdbcClient db;
     private final VectorIndex vectors;
+    private final DocumentIndexQueue queue;
     private final Logger log=LoggerFactory.getLogger(getClass());
-    DocumentIndexer(JdbcClient db,VectorIndex vectors) { this.db=db; this.vectors=vectors; }
-    record Task(String id,String ownerId,int indexedChunks,int chunks,int failures) {}
+    DocumentIndexer(JdbcClient db,VectorIndex vectors,DocumentIndexQueue queue) {
+        this.db=db; this.vectors=vectors; this.queue=queue;
+    }
 
     @Scheduled(fixedDelayString="${DOCUMENT_INDEX_MS:2000}")
     void run() {
-        db.sql("""
-            UPDATE vp_document SET index_state='pending',indexed_chunks=0,failures=0,lease=NULL,
-                due_at=CURRENT_TIMESTAMP(3),vector_space=? WHERE vector_space<>?
-            """).params(vectors.space(),vectors.space()).update();
-        var row=db.sql("""
-            SELECT id,owner_id,indexed_chunks,chunks,failures FROM vp_document WHERE index_state IN ('pending','indexing')
-            AND due_at<=CURRENT_TIMESTAMP(3) ORDER BY due_at,id LIMIT 1
-            """).query(Task.class).optional();
-        if (row.isEmpty()) return;
-        Task task=row.get();
         String lease=DocumentLibrary.id();
-        if (db.sql("""
-                UPDATE vp_document SET lease=?,index_state='indexing',due_at=TIMESTAMPADD(MINUTE,3,CURRENT_TIMESTAMP(3))
-                WHERE id=? AND indexed_chunks=? AND index_state IN ('pending','indexing') AND due_at<=CURRENT_TIMESTAMP(3)
-                """).params(lease,task.id(),task.indexedChunks()).update()==0) return;
+        var task=queue.claim(vectors.space(),lease);
+        if (task==null) return;
         try {
             List<MarkdownSections.Chunk> chunks=db.sql("""
                 SELECT ordinal_no AS ordinal,heading,first_line,last_line,body FROM vp_doc_chunk
