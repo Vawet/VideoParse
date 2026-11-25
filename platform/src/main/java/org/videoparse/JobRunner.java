@@ -20,10 +20,13 @@ class JobRunner {
     private final ObjectMapper json;
     private final String python, publicBase;
     private final Path directory, data;
-    JobRunner(DataSource db, JobMapper jobs, JobService service, ObjectMapper json,
+    private final String engine;
+    private final AnalysisFlow flow;
+    JobRunner(DataSource db, JobMapper jobs, JobService service, ObjectMapper json, AnalysisFlow flow, @Value("${PARSE_ENGINE:java}") String engine,
               @Value("${videoparse.python}") String python, @Value("${videoparse.worker-dir}") Path directory,
               @Value("${videoparse.data}") Path data, @Value("${videoparse.public-base}") String publicBase) {
-        this.db=db; this.jobs=jobs; this.service=service; this.json=json;
+        if(!java.util.Set.of("java","python").contains(engine)) throw new IllegalArgumentException("PARSE_ENGINE 需为 java 或 python");
+        this.engine=engine;this.flow=flow;this.db=db; this.jobs=jobs; this.service=service; this.json=json;
         this.python=python; this.directory=directory; this.data=data; this.publicBase=publicBase;
     }
     private boolean lock(Connection c, String function, String id) throws SQLException {
@@ -50,10 +53,26 @@ class JobRunner {
         } finally {capacity.unlock();}
     }
     private void execute(String id,String video,Connection lock) throws SQLException {
-        var pb=new ProcessBuilder(python,"-m","app.platform_worker",id,video);
+        var pb=new ProcessBuilder(python,"-m",engine.equals("java")?"app.tool_worker":"app.platform_worker",id,video);
         pb.directory(directory.toFile()); pb.redirectError(ProcessBuilder.Redirect.INHERIT);
         pb.environment().put("DATA_ROOT",data.toAbsolutePath().normalize().toString());
         pb.environment().put("PUBLIC_BASE_URL",publicBase);
+        if(engine.equals("java")) {
+            try {
+                flow.run(pb, event -> {
+                    try {if(!lock.isValid(3)) throw new IllegalStateException("任务会话已断开");}
+                    catch(SQLException ex){throw new IllegalStateException(ex);}
+                    jobs.event(id,event);
+                });
+                service.finish(id,null);
+            } catch(InterruptedException ex){Thread.currentThread().interrupt();}
+              catch(Exception ex){
+                if(!lock.isValid(3)) throw new SQLException("丢失任务锁，保留待恢复任务",ex);
+                log.error("解析失败 {}",id,ex);
+                service.finish(id,"解析失败："+ex.getClass().getSimpleName());
+            }
+            return;
+        }
         Process child;
         try {child=pb.start();} catch(java.io.IOException e) {service.finish(id,"无法启动解析进程");return;}
         try(var readers=Executors.newVirtualThreadPerTaskExecutor()) {

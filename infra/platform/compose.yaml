@@ -87,6 +87,7 @@ services:
       PLATFORM_AI_KEY: ${PLATFORM_AI_KEY:-}
       PLATFORM_AI_URL: ${PLATFORM_AI_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       PLATFORM_AI_MODEL: ${PLATFORM_AI_MODEL:-qwen-plus}
+      PARSE_ENGINE: ${PARSE_ENGINE:-java}
       WORKER_DIR: /srv
       ROCKETMQ_ENABLED: "true"
       ROCKETMQ_NAMESERVER: namesrv:9876

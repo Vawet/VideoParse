@@ -39,3 +39,6 @@ Flyway 创建课程、字幕、测验、答题记录和备课版本使用的 MyS
 旧数据可停写后备份 SQLite 与 uploads/frames/outputs/audio，向空学习库运行 `python -m app.migrate_learning /只读快照/videoparse.db`（指定目标 DATABASE_URL）。需单独把原媒体工作区复制到 work 卷；迁移工具保留原 ID、拒绝已有记录的目标库，复制失败会回滚事务。
 
 平台模式也将真实上传的测验、复习和讲授三个标签接入后端，原示例仍可操作。真实作答后显示已核对的原话和时间；复习按本人作答记录排程；备课可按指令另存版本。调用出题与备课模型由用户按钮触发。
+
+## 默认解析编排
+平台默认由 Java 选择语音/无声分支，调度 ASR、关键帧、OCR、讲义和脑图工具并校验结果。若配置 LangChain4j 文本模型，最多两次从白名单选择工具修复。单任务复用同一个本地 Python 媒体工具进程，以保留 Whisper、CLIP、视觉分析及已有结果契约。PARSE_ENGINE=python 可切回原解析循环；任务与事件仍由平台持久化。
