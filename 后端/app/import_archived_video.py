@@ -86,9 +86,16 @@ def import_one(engine, source, target, owner, old_id):
             if re.fullmatch(r"[a-zA-Z0-9_-]+\.png", f.name) and not f.is_symlink():
                 install(target / "frames" / video / f.name, source=f)
         work = source / "outputs" / (old_id + "_work")
+        target_work = target / "outputs" / (video + "_work")
         for f in work.glob("*.json"):
             if f.is_file() and not f.is_symlink():
-                install(target / "outputs" / (video + "_work") / f.name, source=f)
+                install(target_work / f.name, source=f)
+        original = work / "transcript.json"
+        if transcript and (original.is_symlink() or not original.is_file()):
+            segments = [{"start_time": a, "end_time": b, "text": t} for _, a, b, t in transcript]
+            artifact = {"segments": segments, "text": "\n".join(s["text"] for s in segments),
+                        "source": raw.get("transcript_source", "speech")}
+            install(target_work / "transcript.json", content=json.dumps(artifact, ensure_ascii=False).encode())
         install(target / "outputs" / (video + "_result.json"), content=result)
         db.execute(text("DELETE FROM transcript_chunks WHERE video_id=:video"), data)
         if transcript:
