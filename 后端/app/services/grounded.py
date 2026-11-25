@@ -17,13 +17,17 @@ def claims(question, excerpts):
              "每条含 id、quote（对应资料中逐字复制的依据）、answer（一句简短中文结论）。证据不足返回空数组。"},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ], retries=0)
-        valid = []
-        for claim in reply["claims"][:4]:
-            idx, quote, answer = claim["id"], claim["quote"], claim["answer"]
-            if (type(idx) is int and 1 <= idx <= len(payload["excerpts"]) and isinstance(quote, str)
-                    and len(quote.strip()) >= 4 and quote in payload["excerpts"][idx-1]["text"]
-                    and isinstance(answer, str) and answer.strip()):
-                valid.append({"id": idx, "answer": answer.strip()[:800], "quote": quote})
-        return valid
     except Exception:
         return []
+    if not isinstance(reply, dict) or not isinstance(reply.get("claims"), list):
+        return []
+    valid = []
+    for claim in reply["claims"][:4]:
+        if not isinstance(claim, dict):
+            continue
+        idx, quote, answer = claim.get("id"), claim.get("quote"), claim.get("answer")
+        if (type(idx) is int and 1 <= idx <= len(payload["excerpts"]) and isinstance(quote, str)
+                and len(quote.strip()) >= 4 and quote in payload["excerpts"][idx-1]["text"]
+                and isinstance(answer, str) and answer.strip()):
+            valid.append({"id": idx, "answer": answer.strip()[:800], "quote": quote})
+    return valid
