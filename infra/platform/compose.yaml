@@ -77,6 +77,7 @@ services:
     environment:
       <<: *media-env
       PLATFORM_BIND: 0.0.0.0
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
       JDBC_URL: jdbc:mysql://db/videoparse?allowPublicKeyRetrieval=true&connectionTimeZone=UTC
       DB_PASSWORD: ${DB_PASSWORD:?}
       REDIS_HOST: redis

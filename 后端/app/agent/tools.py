@@ -449,8 +449,10 @@ def search_transcript(ws, query, top_k=5):
         import requests
         from urllib.parse import quote
         try:
+            token = getattr(ws, "platform_session_token", None)
             response = requests.get(f"{endpoint.rstrip('/')}/v2/videos/{quote(ws.video_id, safe='')}/evidence",
-                                    params={"q": query}, timeout=(2, 45))
+                                    params={"q": query}, cookies={"vp_session": token} if token else {},
+                                    allow_redirects=False, timeout=(2, 45))
             response.raise_for_status()
             hits = [{**h, "time": media.seconds_to_hhmmss(h["start"])}
                     for h in response.json()["hits"][:max(1, int(top_k))]]

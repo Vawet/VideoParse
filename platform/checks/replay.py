@@ -1,16 +1,17 @@
 """Read-only check for the EventSource contract of an already completed task."""
 import argparse
 import json
-from urllib.request import Request, urlopen
+from http.cookiejar import MozillaCookieJar
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 
-def replay(base, task_id, after=None):
+def replay(base, task_id, after=None, opener=None):
     headers = {"Accept": "text/event-stream"}
     if after is not None:
         headers["Last-Event-ID"] = str(after)
     req = Request(f"{base.rstrip('/')}/tasks/{task_id}/events", headers=headers)
     events = []
-    with urlopen(req, timeout=15) as response:
+    with (opener or build_opener()).open(req, timeout=15) as response:
         assert response.headers.get_content_type() == "text/event-stream", response.headers
         event_id = None
         for line in response:
@@ -26,10 +27,15 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("api_base")
     p.add_argument("completed_task_id")
+    p.add_argument("--cookie-jar", help="拥有该任务的测试访客的 Netscape Cookie 文件")
     args = p.parse_args()
-    rows = replay(args.api_base, args.completed_task_id)
+    jar = MozillaCookieJar(args.cookie_jar)
+    if args.cookie_jar:
+        jar.load(ignore_discard=True)
+    opener = build_opener(HTTPCookieProcessor(jar))
+    rows = replay(args.api_base, args.completed_task_id, opener=opener)
     assert rows and rows[-1][1]["type"] == "end"
     assert [row[0] for row in rows] == sorted({row[0] for row in rows})
     cursor = len(rows) // 2
-    assert replay(args.api_base, args.completed_task_id, rows[cursor][0]) == rows[cursor + 1:]
+    assert replay(args.api_base, args.completed_task_id, rows[cursor][0], opener) == rows[cursor + 1:]
     print(f"验证通过：{len(rows)} 个事件、浏览器 SSE 类型、从游标续读")

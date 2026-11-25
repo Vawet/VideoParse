@@ -11,12 +11,13 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 @RestController
 class TaskController {
+    private final Visitor visitor;
     private final JobMapper jobs;
     private final JobService service;
     private final Path uploads;
     private final AnalysisResults results;
-    TaskController(JobMapper jobs, JobService service, AnalysisResults results, @Value("${videoparse.data}") Path root) {
-        this.jobs = jobs; this.service = service; this.uploads = root.resolve("uploads");
+    TaskController(JobMapper jobs, JobService service, AnalysisResults results, Visitor visitor, @Value("${videoparse.data}") Path root) {
+        this.visitor=visitor;this.jobs = jobs; this.service = service; this.uploads = root.resolve("uploads");
         this.results=results;
     }
 
@@ -29,6 +30,7 @@ class TaskController {
         if (!filename.matches("[a-zA-Z0-9_-]{1,64}\\.(?i:mp4|mov|avi|mkv|flv|webm|m4v)"))
             return Map.of("success",false,"error","无效视频文件名");
         String id = filename.substring(0,filename.lastIndexOf('.'));
+        visitor.video(id);
         if (!id.equals(body.getOrDefault("video_id",id)) || !Files.isRegularFile(uploads.resolve(filename)))
             return Map.of("success",false,"error","视频文件不存在");
         return Map.of("success",true,"task_id",service.submit(id),"video_id",id);
@@ -36,6 +38,7 @@ class TaskController {
 
     @GetMapping("/result/{video}")
     Map<String,Object> result(@PathVariable String video) throws java.io.IOException {
+        visitor.video(video);
         var result=results.result(video);
         if(result==null) return Map.of("success",false,"error","解析结果不存在");
         return Map.of("success",true,"result",result,"video_id",video);
@@ -59,6 +62,7 @@ class TaskController {
     private JobMapper.Job require(String id) {
         var job = jobs.get(id);
         if (job == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
+        visitor.video(job.videoId());
         return job;
     }
 
@@ -74,10 +78,10 @@ class TaskController {
     ResponseEntity<StreamingResponseBody> events(@PathVariable String id,
         @RequestHeader(value="Last-Event-ID",defaultValue="0") long cursor) {
         require(id);
-        return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noCache()).header("X-Accel-Buffering","no").body(out -> {
+        return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).cacheControl(CacheControl.noStore()).header("X-Accel-Buffering","no").body(out -> {
             long after=Math.max(0,cursor), heartbeat=0;
             for (;;) {
-                var job=require(id);
+                var job=jobs.get(id);
                 var batch=jobs.events(id,after);
                 for (var e:batch) {
                     out.write(("id: "+e.id()+"\ndata: "+e.payload()+"\n\n").getBytes(StandardCharsets.UTF_8));

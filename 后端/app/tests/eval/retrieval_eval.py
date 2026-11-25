@@ -5,7 +5,8 @@ import argparse
 import json
 import os
 from urllib.parse import quote, urlencode
-from urllib.request import urlopen
+from http.cookiejar import MozillaCookieJar
+from urllib.request import HTTPCookieProcessor, build_opener
 
 from app.retrieval import Bm25Retriever, DenseRetriever, HybridRetriever
 
@@ -55,13 +56,17 @@ def evaluate(make, chunks=None, queries=QUERIES):
     return evaluate_ranked(lambda q: [h.start for h in r.search(q, top_k=3)], chunks, queries)
 
 
-def evaluate_platform(api_base, video_id):
+def evaluate_platform(api_base, video_id, cookie_file=None):
+    jar = MozillaCookieJar(cookie_file)
+    if cookie_file:
+        jar.load(ignore_discard=True)
+    opener = build_opener(HTTPCookieProcessor(jar))
     endpoint = f"{api_base.rstrip('/')}/v2/videos/{quote(video_id, safe='')}/evidence?"
     dense_queries = 0
 
     def top_starts(question):
         nonlocal dense_queries
-        with urlopen(endpoint + urlencode({"q": question}), timeout=90) as response:
+        with opener.open(endpoint + urlencode({"q": question}), timeout=90) as response:
             result = json.load(response)
         if result["vector_candidates"] > 0:
             dense_queries += 1
@@ -76,8 +81,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform-api", help="Spring API 根地址；测试工作区须已装入 golden.json")
     parser.add_argument("--video-id", default="eval-video")
+    parser.add_argument("--cookie-jar", help="拥有评测视频的测试访客的 Netscape Cookie 文件")
     args = parser.parse_args()
-    runs = ({"platform": evaluate_platform(args.platform_api, args.video_id)} if args.platform_api
+    runs = ({"platform": evaluate_platform(args.platform_api, args.video_id, args.cookie_jar)} if args.platform_api
             else {name: evaluate(make) for name, make in RETRIEVERS.items()})
     for name, groups in runs.items():
         print(name)

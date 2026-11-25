@@ -16,9 +16,19 @@ python3 infra/platform/configure.py
 docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml up --build -d
 ```
 
-浏览器打开 [本机工作台](http://localhost:8088)。本地演示无需域名。默认只监听回环地址；从远程浏览器上传需用 HTTPS，分片校验依赖浏览器 Web Crypto。上传口令和匿名学习标识适用于共享工作台，多用户私有媒体需要账户和访问隔离。
+浏览器打开 [本机工作台](http://localhost:8088)。本地演示无需域名。默认只监听回环地址；从远程浏览器上传需用 HTTPS，分片校验依赖浏览器 Web Crypto。平台按浏览器访客隔离私人视频和学习数据。
 
 首次构建会拉取基础镜像、Python 和 Maven 依赖，并从固定的上游提交编译 MinIO。停止平台用同样参数执行 `down`。MySQL、MinIO、Neo4j、Qdrant、媒体工作区和模型缓存使用独立持久卷。原本地模式仍可在 `后端/` 用 `python -m app.main` 启动 Flask，在 `前端/workspace/` 用 `pnpm dev` 启动工作台。
+
+## 匿名访客工作区
+
+工作台通过同源的 `/api/v2/session` 建立匿名工作区。服务端签发有效期 365 天的随机 Cookie，设置 HttpOnly、SameSite=Strict 和 Secure，MySQL 保存凭据摘要。公开部署需使用 HTTPS。仅在独立的本地 HTTP 测试环境可设 `SESSION_COOKIE_SECURE=false`。同一浏览器配置中的标签页共用身份，隐私窗口、其他浏览器和设备各自独立。清除 Cookie 或到期后将进入新工作区。
+
+上传会话、视频和课程在创建时绑定访客。任务进度、媒体、图快照、检索、测验和教案沿所属资源检查权限。个人作答和复习记录使用服务端访客身份。平台问答首次返回 `conversation_id`，后续请求带回该 ID，由后端载入同一访客、同一视频或课程的最近 16 条消息。清空聊天开启新对话。内置静态演示仍可直接打开。
+
+V7 迁移保留旧数据，将缺少归属的资源设为私有待分配。管理员有独立归属证明时，可先备份，在同一 MySQL 事务中将对应的课程、视频、上传会话的 `owner_id` 设置为目标访客的 `workspace_id`，同时核对课程下所有视频。旧学习记录的 `client_id` 需另行确认后映射。原 Flask 开发入口仅用于本地，公开入口使用本平台的 Spring API。
+
+在关闭上传口令的独立测试实例运行 `python3 platform/checks/ownership.py http://localhost:8088/api`，可用两个新访客回归上传和课程归属。该检查会在目标实例创建测试资源。
 
 ## 模型和费用
 
@@ -74,6 +84,6 @@ python -m app.migrate_learning /只读快照/videoparse.db
 
 - **任务和界面。** 独立环境使用真实 MySQL、Redis、MinIO、RocketMQ 和 Qdrant。8 个并发提交只创建一个活动任务。解析一段 8 秒无声 MP4 期间强制结束 JVM，重启后同一任务复用了阶段检查点。浏览器验证上传、进度、证据检索、答题判分、打开复习和讲授，以及刷新重开；示例八个标签与 PDF/PNG 导出菜单均可访问。在生产构建中，浏览器已逐张验证示例封面、讲义插图及 PPT 的缩略图和放大图。FFmpeg 和存储使用真实实现，讲义与问答使用本地模型替身。
 - **字幕检索。** 同一视频的 5 道字面题，Java BM25 和平台混合检索的 Hit@1 均为 5/5。另 7 道换说法题，Java BM25 的 Hit@1、Hit@3 为 4/7、5/7；接入真实本地 BGE 和 Qdrant 后为 5/7、6/7。原 Python 混合检索为 6/7、6/7。题集只覆盖一个短视频，不能据此推断长视频 OCR 或最终答案的准确率。
-- **复测入口。** 对已结束任务运行 `python3 platform/checks/replay.py http://localhost:8088/api 任务ID`，可核查事件流 MIME 类型、递增事件 ID 和续读。在独立测试工作区将 `后端/app/tests/eval/golden.json` 放到 `outputs/eval-video_work/transcript.json`，从 `后端/` 运行 `python -m app.tests.eval.retrieval_eval --platform-api http://localhost:8088/api`，可测 Spring 实际检索结果。
+- **复测入口。** 对已结束任务运行 `python3 platform/checks/replay.py http://localhost:8088/api 任务ID`，配合 `--cookie-jar 私有测试Cookie文件` 可核查事件流 MIME 类型、递增事件 ID 和续读。在独立测试工作区将 `后端/app/tests/eval/golden.json` 放到测试访客已上传视频的 `outputs/<视频ID>_work/transcript.json`，从 `后端/` 运行 `python -m app.tests.eval.retrieval_eval --platform-api http://localhost:8088/api --video-id 视频ID --cookie-jar 私有测试Cookie文件`，可测 Spring 实际检索结果。
 - **图发布。** 隔离工作区使用真实 RocketMQ、MySQL 和 Neo4j，媒体进程使用固定测试数据。在图库短时故障、提交后丢回执、重复消息和服务重启场景中，同一任务只执行一次媒体解析，图里保留一组证据。连续五次写入失败后成功从工作区补发。单独关闭 RocketMQ 消费后，MySQL 补捞也能完成发布。
 - **部署边界。** 已用 Compose v2 验证含 Neo4j 的九个服务配置，正常打包 Java 和前端。整套容器构建在拉取 Docker Hub 基础镜像时网络超时，尚未验证全容器冷启动。商业模型效果、生产并发和最低服务器内存也未实测。

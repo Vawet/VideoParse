@@ -31,7 +31,7 @@ def get_keywords(params, base, video_id):
     return _ok({"success": True, "keywords": kws})
 
 
-def chat(params, base):
+def chat(params, base, *, session_token=None):
     data = params
     question = (data.get("question") or "").strip()
     course_id = data.get("course_id")
@@ -48,6 +48,7 @@ def chat(params, base):
                 ws = Workspace(data["video_id"], base)
             except ValueError as e:
                 return _fail(str(e))
+            ws.platform_session_token = session_token
             if not ws.video_path:
                 return _fail("视频文件不存在")
             answer, history, citations = loop.chat_with_video(ws, data.get("history") or [], question, emit=emit,

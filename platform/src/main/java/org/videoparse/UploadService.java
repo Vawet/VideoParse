@@ -22,12 +22,13 @@ class UploadService {
     private final ObjectMapper json;
     private final UploadGate gate;
     private final MediaStore store;
+    private final Visitor visitor;
     private final Path directory;
-    UploadService(JdbcClient db,ObjectMapper json,UploadGate gate,MediaStore store,@Value("${videoparse.data}") Path root) {
-        this.db=db;this.json=json;this.gate=gate;this.store=store;this.directory=root.resolve("uploads");
+    UploadService(JdbcClient db,ObjectMapper json,UploadGate gate,MediaStore store,Visitor visitor,@Value("${videoparse.data}") Path root) {
+        this.visitor=visitor;this.db=db;this.json=json;this.gate=gate;this.store=store;this.directory=root.resolve("uploads");
     }
     private Upload get(UUID id,boolean lock) {
-        return db.sql("SELECT * FROM vp_upload WHERE id=?"+(lock?" FOR UPDATE":"")).param(id.toString()).query(Upload.class)
+        return db.sql("SELECT * FROM vp_upload WHERE id=? AND owner_id=?"+(lock?" FOR UPDATE":"")).params(id.toString(),visitor.id()).query(Upload.class)
                 .optional().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"上传会话不存在"));
     }
     String begin(Manifest m) throws Exception {
@@ -37,8 +38,8 @@ class UploadService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"文件格式、大小或分片清单无效");
         gate.consume(m.token());
         String id=UUID.randomUUID().toString();
-        db.sql("INSERT INTO vp_upload(id,video,filename,bytes,hashes) VALUES(?,?,?,?,?)")
-          .params(id,UUID.randomUUID().toString(),m.filename(),m.bytes(),json.writeValueAsString(m.hashes())).update();
+        db.sql("INSERT INTO vp_upload(id,video,filename,bytes,hashes,owner_id) VALUES(?,?,?,?,?,?)")
+          .params(id,UUID.randomUUID().toString(),m.filename(),m.bytes(),json.writeValueAsString(m.hashes()),visitor.start()).update();
         return id;
     }
     List<Integer> parts(UUID id) {
@@ -66,7 +67,7 @@ class UploadService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"还有分片未上传");
             store.assemble(u.id(),n,u.storedName(),directory);
             String title=u.filename().substring(0,u.filename().lastIndexOf('.'));
-            db.sql("INSERT INTO videos(id,title,duration,status,created_at) VALUES(?,?,0,'uploaded',UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE title=VALUES(title)").params(u.video(),title).update();
+            db.sql("INSERT INTO videos(id,title,duration,status,created_at,owner_id) VALUES(?,?,0,'uploaded',UTC_TIMESTAMP(),?)").params(u.video(),title,visitor.id()).update();
             db.sql("UPDATE vp_upload SET complete=true WHERE id=?").param(u.id()).update();
         }
         return Map.of("success",true,"filepath",u.storedName(),"video_id",u.video());

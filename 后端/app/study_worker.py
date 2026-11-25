@@ -16,7 +16,10 @@ def main():
         try:
             message = json.loads(line)
             args = message["args"]
-            payload, status = OPERATIONS[message["tool"]](args["params"], os.environ.get("PUBLIC_BASE_URL", "/api"), *args["path"])
+            operation = message["tool"]
+            kwargs = {"session_token": args.get("session_token")} if operation == "chat" else {}
+            payload, status = OPERATIONS[operation](args["params"], os.environ.get("PUBLIC_BASE_URL", "/api"),
+                                                  *args["path"], **kwargs)
         except Exception:
             logging.exception("学习工具执行失败")
             payload, status = {"success": False, "error": "学习工具执行失败"}, 500

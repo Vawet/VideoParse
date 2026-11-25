@@ -28,6 +28,12 @@ class StudyTools {
         idle=new ArrayBlockingQueue<>(workers);slots=new Semaphore(workers,true);
     }
     ResponseEntity<JsonNode> invoke(String operation,Map<String,?> params,String...path) throws InterruptedException {
+        return invokeWorker(operation,Map.of("params",params,"path",List.of(path)));
+    }
+    ResponseEntity<JsonNode> chat(Map<String,?> params,String visitorToken) throws InterruptedException {
+        return invokeWorker("chat",Map.of("params",params,"path",List.of(),"session_token",visitorToken));
+    }
+    private ResponseEntity<JsonNode> invokeWorker(String operation,Map<String,Object> args) throws InterruptedException {
         if(!slots.tryAcquire(3,TimeUnit.SECONDS)) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"学习服务繁忙，请稍后重试");
         MediaToolSession session=idle.poll();
         try {
@@ -37,7 +43,7 @@ class StudyTools {
                 pb.environment().put("PUBLIC_BASE_URL",base);
                 session=new MediaToolSession(pb,json);
             }
-            var answer=session.call(operation,Map.of("params",params==null?Map.of():params,"path",List.of(path)),3);
+            var answer=session.call(operation,args,3);
             if(!answer.has("status") || !answer.has("body")) throw new IOException("响应格式错误");
             idle.add(session);session=null;
             return ResponseEntity.status(answer.get("status").asInt()).body(answer.get("body"));

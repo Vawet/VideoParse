@@ -16,13 +16,14 @@ import org.springframework.web.server.ResponseStatusException;
 class EvidenceController {
     private final AnalysisResults results;
     private final VectorIndex vectors;
+    private final Visitor visitor;
     private final ObjectMapper json;
     private final OpenAiChatModel model;
     private final Logger log=LoggerFactory.getLogger(getClass());
-    EvidenceController(AnalysisResults results,VectorIndex vectors,ObjectMapper json,
+    EvidenceController(AnalysisResults results,VectorIndex vectors,ObjectMapper json,Visitor visitor,
             @Value("${PLATFORM_AI_KEY:}") String key,@Value("${PLATFORM_AI_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}") String base,
             @Value("${PLATFORM_AI_MODEL:qwen-plus}") String modelName) {
-        this.results=results;this.vectors=vectors;this.json=json;
+        this.visitor=visitor;this.results=results;this.vectors=vectors;this.json=json;
         this.model=key.isBlank()?null:OpenAiChatModel.builder().apiKey(key).baseUrl(base).modelName(modelName)
             .timeout(Duration.ofSeconds(45)).maxRetries(0).build();
     }
@@ -39,12 +40,14 @@ class EvidenceController {
         return new Search(EvidenceCorpus.rank(scores).stream().limit(6).map(docs::get).toList(),dense.size());
     }
     @GetMapping("/evidence") Map<String,Object> evidence(@PathVariable String video,@RequestParam String q) throws Exception {
+        visitor.video(video);
         var result=search(video,q);
         return Map.of("success",true,"hits",result.hits(),"can_ask",model!=null,"vector_candidates",result.vectorCandidates());
     }
 
     record Ask(String question) {}
     @PostMapping("/ask") Map<String,Object> ask(@PathVariable String video,@RequestBody Ask body) throws Exception {
+        visitor.video(video);
         if(model==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"尚未配置问答模型");
         var hits=search(video,body.question()).hits();
         var claims=new ArrayList<Map<String,Object>>();

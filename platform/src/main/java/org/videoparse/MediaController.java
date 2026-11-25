@@ -13,11 +13,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 class MediaController {
+    private final Visitor visitor;
     private final Path root;
     private final UploadService uploads;
     private final UploadGate gate;
-    MediaController(@Value("${videoparse.data}") Path root,UploadService uploads,UploadGate gate){
-        this.root=root;this.uploads=uploads;this.gate=gate;
+    MediaController(@Value("${videoparse.data}") Path root,UploadService uploads,UploadGate gate,Visitor visitor){
+        this.visitor=visitor;this.root=root;this.uploads=uploads;this.gate=gate;
     }
     @GetMapping("/upload/question") Map<String,Object> question(){return gate.question();}
     @PostMapping("/upload/verify") Map<String,Object> verify(@RequestBody Map<String,String> body,HttpServletRequest req){return gate.verify(body,req);}
@@ -42,15 +43,16 @@ class MediaController {
     }
     @GetMapping("/uploads/{filename}") ResponseEntity<Resource> video(@PathVariable String filename){
         if(!filename.matches("[a-zA-Z0-9_-]{1,64}\\.(?i:mp4|mov|avi|mkv|flv|webm|m4v)")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        visitor.video(filename.substring(0,filename.lastIndexOf('.')));
         return resource(root.resolve("uploads").resolve(filename),MediaTypeFactory.getMediaType(filename).orElse(MediaType.APPLICATION_OCTET_STREAM));
     }
     @GetMapping("/frames/{id}/{filename}") ResponseEntity<Resource> image(@PathVariable String id,@PathVariable String filename){
-        valid(id);
+        valid(id);visitor.video(id);
         if(!filename.matches("[a-zA-Z0-9_-]+\\.png"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"只支持 PNG 帧");
         return resource(root.resolve("frames").resolve(id).resolve(filename),MediaType.IMAGE_PNG);
     }
     @GetMapping("/frames/{id}") Map<String,Object> frames(@PathVariable String id) throws Exception {
-        valid(id);var dir=root.resolve("frames").resolve(id);
+        valid(id);visitor.video(id);var dir=root.resolve("frames").resolve(id);
         var ppt=new ArrayList<String>();var heavy=new ArrayList<String>();
         if(Files.isDirectory(dir))try(var paths=Files.list(dir)){
             for(String file:paths.filter(Files::isRegularFile).map(p->p.getFileName().toString()).sorted().toList())
