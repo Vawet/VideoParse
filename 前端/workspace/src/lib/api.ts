@@ -7,6 +7,7 @@ export const API_BASE: string =
   "http://127.0.0.1:5000";
 
 let workspaceId = "";
+let username = "";
 let sessionRequest: Promise<void> | undefined;
 const transientWorkspace = Math.random().toString(36).slice(2);
 
@@ -14,16 +15,46 @@ export function openWorkspace(): Promise<void> {
   if (!platform || workspaceId) return Promise.resolve();
   if (!sessionRequest) {
     const load = async () => {
-      const { workspace_id } = await request<{ workspace_id: string }>("/v2/session", {
+      const session = await request<{ workspace_id: string; username?: string }>("/v2/session", {
         cache: "no-store", signal: AbortSignal.timeout(5000),
       });
-      workspaceId = workspace_id;
+      workspaceId = session.workspace_id;
+      username = session.username || "";
     };
     // Serialize the first Set-Cookie across tabs opened at the same time.
     sessionRequest = (navigator.locks ? navigator.locks.request("vp-session:" + API_BASE, load) : load())
       .then(() => undefined).finally(() => { sessionRequest = undefined; });
   }
   return sessionRequest;
+}
+
+export async function workspaceUsername() {
+  await openWorkspace();
+  return username;
+}
+
+const identityEvent = "vp:identity-changed:"+API_BASE;
+const accountChannel = platform && typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(identityEvent) : null;
+
+export async function changeAccount(action: "register" | "login" | "logout", credentials?: {username:string; password:string}) {
+  await openWorkspace();
+  await postJson("/v2/account/"+action,credentials ?? {});
+  accountChannel?.postMessage("changed");
+  try {
+    if (action !== "register") localStorage.removeItem("vp:recent-tasks:"+API_BASE+":"+workspaceId);
+    localStorage.setItem(identityEvent, String(Date.now()));
+  } catch { /* Account changes still apply when browser storage is unavailable. */ }
+  window.location.replace("/library");
+}
+
+if (platform) {
+  if (accountChannel) accountChannel.onmessage = () => window.location.replace("/library");
+  window.addEventListener("storage",event=>{
+    if (!accountChannel && event.key === identityEvent) window.location.replace("/library");
+  });
+  window.addEventListener("pageshow",event=>{
+    if (event.persisted) window.location.reload();
+  });
 }
 
 const CLIENT_KEY = "videoparse-client-id";

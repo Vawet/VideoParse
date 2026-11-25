@@ -27,7 +27,8 @@ class Visitor {
     private final JdbcClient db;
     private final HttpServletResponse response;
     private final boolean secure;
-    private String id, token;
+    private String id, token, username;
+    record Identity(String id,String username) {}
 
     Visitor(JdbcClient db, HttpServletRequest request, HttpServletResponse response,
             @Value("${SESSION_COOKIE_SECURE:true}") boolean secure) {
@@ -39,11 +40,18 @@ class Visitor {
         if (cookies != null) for (var cookie : cookies) {
             if (!COOKIE.equals(cookie.getName()) || !cookie.getValue().matches("[0-9a-f]{64}")) continue;
             String presented = cookie.getValue();
-            var existing = db.sql("SELECT id FROM vp_visitor WHERE token_hash=? AND expires_at>UTC_TIMESTAMP()")
-                .param(hash(presented)).query(String.class).optional();
+            byte[] digest=hash(presented);
+            var existing = db.sql("""
+                SELECT v.id,NULL AS username FROM vp_visitor v WHERE v.token_hash=? AND v.expires_at>UTC_TIMESTAMP()
+                    AND NOT EXISTS (SELECT 1 FROM vp_account a WHERE a.owner_id=v.id)
+                UNION ALL
+                SELECT s.owner_id AS id,a.username FROM vp_account_session s JOIN vp_account a ON a.owner_id=s.owner_id
+                WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP()
+                """).params(digest,digest).query(Identity.class).optional();
             if (existing.isPresent()) {
                 token = presented;
-                id = existing.get();
+                id = existing.get().id();
+                username = existing.get().username();
                 return;
             }
         }
@@ -51,19 +59,27 @@ class Visitor {
 
     String start() {
         if (id != null) return id;
-        var bytes = new byte[32];
-        RANDOM.nextBytes(bytes);
-        token = HexFormat.of().formatHex(bytes);
+        token = newToken();
         id = UUID.randomUUID().toString().replace("-","");
         db.sql("INSERT INTO vp_visitor(id,token_hash,expires_at) VALUES(?,?,UTC_TIMESTAMP()+INTERVAL 365 DAY)")
             .params(id,hash(token)).update();
-        var cookie = ResponseCookie.from(COOKIE,token).httpOnly(true).secure(secure).sameSite("Strict")
-            .path("/").maxAge(Duration.ofDays(365)).build();
-        response.addHeader(HttpHeaders.SET_COOKIE,cookie.toString());
+        cookie(token,Duration.ofDays(365));
         return id;
     }
 
-    private static byte[] hash(String value) {
+    static String newToken() {
+        byte[] bytes=new byte[32];
+        RANDOM.nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
+    }
+    String username() { return username; }
+    void cookie(String value,Duration duration) {
+        var cookie = ResponseCookie.from(COOKIE,value).httpOnly(true).secure(secure).sameSite("Strict")
+            .path("/").maxAge(duration).build();
+        response.addHeader(HttpHeaders.SET_COOKIE,cookie.toString());
+    }
+
+    static byte[] hash(String value) {
         try { return MessageDigest.getInstance("SHA-256").digest(HexFormat.of().parseHex(value)); }
         catch (NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
@@ -107,6 +123,7 @@ class SessionController {
     private final Visitor visitor;
     SessionController(Visitor visitor) { this.visitor = visitor; }
     @GetMapping("/v2/session") java.util.Map<String,Object> session() {
-        return java.util.Map.of("success",true,"workspace_id",visitor.start());
+        return java.util.Map.of("success",true,"workspace_id",visitor.start(),
+            "username",java.util.Objects.toString(visitor.username(),""));
     }
 }

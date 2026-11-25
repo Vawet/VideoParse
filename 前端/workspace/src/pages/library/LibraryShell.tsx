@@ -8,6 +8,7 @@ import { useLibrary } from "./use-library";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PasteMarkdown } from "./PasteMarkdown";
 import { LibraryItemDialog, type LibraryAction } from "./LibraryItemDialog";
+import { WorkspaceAccount } from "./WorkspaceAccount";
 import { LegacyImport } from "./LegacyImport";
 import Workspace from "../workspace";
 
@@ -110,6 +111,7 @@ function LibraryList({onSelect}: {onSelect?: () => void}) {
         </section>;
       })}
     </div>
+    <WorkspaceAccount/>
     {action && <LibraryItemDialog action={action} onClose={() => setAction(null)} onSaved={finishAction}/>}
     <div className="px-5 pb-5"><LegacyImport/></div>
   </nav>;
