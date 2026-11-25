@@ -1,5 +1,7 @@
 # Video_Parse
 
+新平台部署与迁移进度见 [Spring 平台运行说明](docs/platform-migration.md)。原学习工作台保留。
+
 ## 2025腾讯犀牛鸟开源人才培养计划—视频生成图文混排讲义工具
 
 ***

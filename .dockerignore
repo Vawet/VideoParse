@@ -1,0 +1,16 @@
+**
+!platform/
+!platform/pom.xml
+!platform/src/
+!platform/src/**
+!infra/
+!infra/platform/
+!infra/platform/nginx.conf
+!前端/
+!前端/workspace/
+!前端/workspace/**
+前端/workspace/node_modules/
+前端/workspace/dist/
+**/.env*
+**/node_modules/
+**/.git/

@@ -1,0 +1,76 @@
+name: videoparse
+x-media-env: &media-env
+  DATA_ROOT: /data
+  PUBLIC_BASE_URL: /api
+  DATABASE_URL: mysql+pymysql://videoparse:${DB_PASSWORD:?generate deployment env}@db/videoparse?charset=utf8mb4
+  DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  LLM_PROVIDER: ${LLM_PROVIDER:-}
+  UPLOAD_ANSWER: ${UPLOAD_ANSWER:?set upload passphrase}
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: videoparse
+      MYSQL_USER: videoparse
+      MYSQL_PASSWORD: ${DB_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+    volumes: [db:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 4s
+      retries: 40
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?}"]
+    volumes: [cache:/data]
+  objects:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: videoparse
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?}
+    volumes: [objects:/data]
+  learning:
+    build:
+      context: ../../后端
+    environment: *media-env
+    volumes: [work:/data, models:/root/.cache]
+    depends_on:
+      db: {condition: service_healthy}
+  platform:
+    build:
+      context: ../..
+      dockerfile: infra/platform/Platform.Dockerfile
+      additional_contexts:
+        media_runtime: service:learning
+    environment:
+      <<: *media-env
+      PLATFORM_BIND: 0.0.0.0
+      JDBC_URL: jdbc:mysql://db/videoparse?allowPublicKeyRetrieval=true&connectionTimeZone=UTC
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      MINIO_ENDPOINT: http://objects:9000
+      MINIO_ACCESS_KEY: videoparse
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      WORKER_DIR: /srv
+    volumes: [work:/data, models:/root/.cache]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_started}
+      objects: {condition: service_started}
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/platform/Web.Dockerfile
+    ports: ["${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8088}:80"]
+    depends_on: [platform,learning]
+volumes:
+  db:
+  cache:
+  objects:
+  work:
+  models:

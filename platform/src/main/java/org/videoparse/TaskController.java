@@ -14,9 +14,11 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 class TaskController {
     private final JobMapper jobs;
     private final JobService service;
-    private final Path uploads;
-    TaskController(JobMapper jobs, JobService service, @Value("${videoparse.data}") Path root) {
+    private final Path uploads,outputs;
+    private final ObjectMapper json;
+    TaskController(JobMapper jobs, JobService service, ObjectMapper json, @Value("${videoparse.data}") Path root) {
         this.jobs = jobs; this.service = service; this.uploads = root.resolve("uploads");
+        this.outputs=root.resolve("outputs"); this.json=json;
     }
 
     @GetMapping("/health")
@@ -31,6 +33,31 @@ class TaskController {
         if (!id.equals(body.getOrDefault("video_id",id)) || !Files.isRegularFile(uploads.resolve(filename)))
             return Map.of("success",false,"error","视频文件不存在");
         return Map.of("success",true,"task_id",service.submit(id),"video_id",id);
+    }
+
+    @GetMapping("/result/{video}")
+    Map<String,Object> result(@PathVariable String video) throws java.io.IOException {
+        if (!video.matches("[a-zA-Z0-9_-]{1,64}")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"非法视频编号");
+        var file=outputs.resolve(video+"_result.json");
+        if(!Files.isRegularFile(file)) return Map.of("success",false,"error","解析结果不存在");
+        try(var input=Files.newInputStream(file)) {
+            return Map.of("success",true,"result",json.readTree(input),"video_id",video);
+        }
+    }
+
+    @PostMapping("/analyze")
+    Map<String,Object> analyze(@RequestBody Map<String,Object> body) throws Exception {
+        var args=new HashMap<String,String>();
+        for(var k:List.of("filepath","video_id")) if(body.get(k) instanceof String value) args.put(k,value);
+        var submitted=submit(args);
+        if(!Boolean.TRUE.equals(submitted.get("success")) || Boolean.TRUE.equals(body.get("async"))) return submitted;
+        var id=(String)submitted.get("task_id");
+        for(;;) {
+            var job=require(id);
+            if(job.status().equals("done")) return result(job.videoId());
+            if(job.status().equals("error")) return Map.of("success",false,"error",job.error());
+            Thread.sleep(500);
+        }
     }
 
     private JobMapper.Job require(String id) {

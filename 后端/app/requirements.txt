@@ -17,3 +17,5 @@ jieba
 rank_bm25
 # 使用 Postgres 时再安装: psycopg[binary]
 sentence-transformers
+
+PyMySQL[rsa]>=1.1,<2

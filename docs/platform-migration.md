@@ -9,3 +9,14 @@
 
 ## 分片上传
 平台模式沿用原上传入口；HTTPS 或 localhost 下按 5 MiB 计算 SHA-256，失败后重选同一文件可续传，支持不超过 2 GiB 的视频。Redis 保存一次性验证令牌；MySQL 保存分片清单；MinIO 保存对象，合并后才发布本地媒体工作副本。完成请求可重放，过期的未完成会话与临时对象由后台清理。旧版 Web 服务仍可独立启动。
+
+## 启动平台
+需要 Docker 和 Compose v2.22 或以上。首次运行：
+
+```bash
+python3 infra/platform/configure.py
+# 在 infra/platform/.env 中设置模型 API 和自己的 UPLOAD_ANSWER
+docker compose -f infra/platform/compose.yaml up --build -d
+```
+
+打开 http://localhost:8088 。网关为原学习工作台、Java 平台与兼容学习 API 提供同源入口。上传分片、任务和 SSE 由 Spring 提供；学习数据在本部署自己的 MySQL 库，媒体产物在 work 卷，模型缓存可跨容器重用。原本地库与文件不会自动导入。停止运行用同一 compose 文件执行 `down`；卷中保存结果和课程记录。公开部署时配置 HTTPS。使用 `start-all.sh` 可以独立运行原有本地模式。
