@@ -1,8 +1,11 @@
 """检索召回评测（离线、不调 LLM）：  cd 后端 && ./.venv/bin/python -m app.tests.eval.retrieval_eval
 分别统计"字面提问"与"换说法提问"下 BM25 的 hit@1 / hit@3 / MRR，用来判断是否有必要上向量检索。
 新增 Retriever 实现时，在 RETRIEVERS 里登记即可对比。"""
+import argparse
 import json
 import os
+from urllib.parse import quote, urlencode
+from urllib.request import urlopen
 
 from app.retrieval import Bm25Retriever, DenseRetriever, HybridRetriever
 
@@ -32,13 +35,11 @@ def load_chunks():
 RETRIEVERS = {"bm25": Bm25Retriever, "dense": DenseRetriever, "hybrid": HybridRetriever}
 
 
-def evaluate(make, chunks=None, queries=QUERIES):
-    chunks = chunks or load_chunks()
-    r = make(chunks)
+def evaluate_ranked(top_starts, chunks, queries):
     stats = {}
     for q, idx, kind in queries:
-        hits = r.search(q, top_k=3)
-        pos = next((i for i, h in enumerate(hits) if h.start == chunks[idx]["start"]), None)
+        starts = top_starts(q)
+        pos = next((i for i, start in enumerate(starts) if start == chunks[idx]["start"]), None)
         s = stats.setdefault(kind, {"n": 0, "hit1": 0, "hit3": 0, "mrr": 0.0})
         s["n"] += 1
         s["hit1"] += pos == 0
@@ -48,10 +49,39 @@ def evaluate(make, chunks=None, queries=QUERIES):
             for k, v in stats.items()}
 
 
+def evaluate(make, chunks=None, queries=QUERIES):
+    chunks = chunks or load_chunks()
+    r = make(chunks)
+    return evaluate_ranked(lambda q: [h.start for h in r.search(q, top_k=3)], chunks, queries)
+
+
+def evaluate_platform(api_base, video_id):
+    endpoint = f"{api_base.rstrip('/')}/v2/videos/{quote(video_id, safe='')}/evidence?"
+    dense_queries = 0
+
+    def top_starts(question):
+        nonlocal dense_queries
+        with urlopen(endpoint + urlencode({"q": question}), timeout=90) as response:
+            result = json.load(response)
+        if result["vector_candidates"] > 0:
+            dense_queries += 1
+        return [hit["start"] for hit in result["hits"][:3]]
+
+    stats = evaluate_ranked(top_starts, load_chunks(), QUERIES)
+    print(f"platform · 有向量候选的问题数 {dense_queries}/{len(QUERIES)}")
+    return stats
+
+
 def main():
-    for name, make in RETRIEVERS.items():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--platform-api", help="Spring API 根地址；测试工作区须已装入 golden.json")
+    parser.add_argument("--video-id", default="eval-video")
+    args = parser.parse_args()
+    runs = ({"platform": evaluate_platform(args.platform_api, args.video_id)} if args.platform_api
+            else {name: evaluate(make) for name, make in RETRIEVERS.items()})
+    for name, groups in runs.items():
         print(name)
-        for kind, m in evaluate(make).items():
+        for kind, m in groups.items():
             print(f"  {kind:<10} n={m['n']}  hit@1={m['hit@1']:.0%}  hit@3={m['hit@3']:.0%}  mrr={m['mrr']}")
 
 

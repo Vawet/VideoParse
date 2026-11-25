@@ -11,6 +11,7 @@ import jieba
 from rank_bm25 import BM25Okapi
 
 from app.db import repo
+from app.local_embeddings import DEFAULT_MODEL, QUERY_PREFIX
 from app.services import media
 
 log = logging.getLogger(__name__)
@@ -72,7 +73,6 @@ class Bm25Retriever(Retriever):
         return [_make_hit(self.chunks, i, sc) for i, sc in self.ranked(query)[:max(1, int(top_k))]]
 
 
-_QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章："
 _embedder = None
 _embedder_lock = threading.Lock()
 
@@ -84,7 +84,7 @@ def _get_embedder():
         if _embedder is None:
             try:
                 from sentence_transformers import SentenceTransformer
-                _embedder = SentenceTransformer(os.getenv("EMBED_MODEL", "BAAI/bge-small-zh-v1.5"))
+                _embedder = SentenceTransformer(os.getenv("EMBED_MODEL", DEFAULT_MODEL))
             except Exception as e:  # noqa: BLE001
                 log.warning("embedding 模型不可用，降级为 BM25: %s", e)
                 _embedder = False
@@ -104,7 +104,7 @@ class DenseRetriever(Retriever):
     def ranked(self, query: str) -> List[Tuple[int, float]]:
         if self.vecs is None or not (query or "").strip():
             return []
-        q = self.embedder.encode([_QUERY_PREFIX + query], normalize_embeddings=True, show_progress_bar=False)[0]
+        q = self.embedder.encode([QUERY_PREFIX + query], normalize_embeddings=True, show_progress_bar=False)[0]
         sims = self.vecs @ q
         floor = float(os.getenv("EMBED_MIN_SIM", "0.40"))  # 无关问题也会有"最相近"片段，低于阈值视为未命中
         return sorted(((i, float(sims[i])) for i in range(len(sims)) if sims[i] >= floor), key=lambda t: -t[1])

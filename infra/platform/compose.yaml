@@ -78,6 +78,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:?}
+      EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-small-zh-v1.5}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
       PLATFORM_EMBED_MODEL: ${PLATFORM_EMBED_MODEL:-BAAI/bge-m3}
