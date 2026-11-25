@@ -23,6 +23,7 @@ async function api<T>(path = "", options?: RequestInit): Promise<T> {
 export default function Library() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [scope, setScope] = useState("");
+  const [documentsOnly, setDocumentsOnly] = useState(false);
   const [reading, setReading] = useState<Reading | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -78,7 +79,7 @@ export default function Library() {
     setError(""); setSearching(true); setAnswer(null);
     try {
       setAnswer(await api<Answer>("/ask", { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({question:question.trim(), documentId:scope || null}) }));
+        body:JSON.stringify({question:question.trim(), documentId:scope || null, documentsOnly}) }));
     } catch (e) { setError((e as Error).message); }
     finally { setSearching(false); }
   }
@@ -115,6 +116,11 @@ export default function Library() {
                   onChange={e => {setScope(e.target.value); setAnswer(null);}}>
                   <option value="">全部文档</option>{docs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={documentsOnly} disabled={searching}
+                  onChange={e => {setDocumentsOnly(e.target.checked); setAnswer(null);}}/>
+                仅用我的文档回答，关闭网页搜索
               </label>
               <textarea aria-label="资料问题" maxLength={1000} rows={3} required value={question} onChange={e=>setQuestion(e.target.value)}
                 className="w-full rounded-md border border-border bg-background p-3 text-sm" placeholder="问笔记中的概念，或查找相关的官方文档"/>

@@ -80,6 +80,11 @@ def run(base):
                     baseline.append(rank(rows, docs[name], section))
         selected = ask("如何向人讲解所学的知识", note)["hits"]
         assert selected and all(h["docId"] == note for h in selected)
+        restricted = api(owner, "POST", "documents/ask", json={
+            "question": "联网搜索归并排序的官方文档", "documentId": docs["算法笔记.md"], "documentsOnly": True,
+        })
+        assert restricted["source"] == "document" and restricted["hits"]
+        assert all(h["docId"] == docs["算法笔记.md"] for h in restricted["hits"])
     finally:
         if engine:
             engine.dispose()

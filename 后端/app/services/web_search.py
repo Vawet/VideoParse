@@ -7,14 +7,28 @@ import requests
 from bs4 import BeautifulSoup
 from app.services import grounded
 
-LOCAL_ONLY = re.compile(r"(?:不要|不用|无需|禁止|别)(?:再)?(?:联网|上网|搜网)|只(?:根据|看|用|参考)(?:这|本)?(?:段|个|篇)?(?:视频|文档|课程)|without (?:web|internet)|do not (?:browse|search)", re.I)
+NO_WEB = re.compile(
+    r"(?:不要|不用|无需|不必|禁止|别)(?:再|去|到)?(?:联网|上网|搜网|网上查|网上搜|使用外部资料)"
+    r"|\bwithout (?:the )?(?:web|internet|external sources?)\b"
+    r"|\b(?:do not|don['’]t|never) (?:browse|search(?: (?:the )?(?:web|internet))?|use (?:the )?(?:web|internet|external sources?))\b",
+    re.I,
+)
+LOCAL_MATERIAL = r"(?:视频|文档|课程|笔记|资料库|资料|教材|讲义|字幕|原文|课件)"
+LOCAL_ONLY = re.compile(
+    r"(?<!不)(?<!别)(?<!仅)(?<!不要)(?:只|仅仅?)(?:能)?(?:根据|依据|基于|参考|使用|看|用|从|查|在)"
+    r"(?:我(?:的)?|已上传的?|上传的?|这(?:份|些|个|篇|段|门)?|本(?:篇|段|门)?|当前的?|自己(?:的)?|本地的?)*"
+    + LOCAL_MATERIAL
+    + r"|(?<!not )(?<!n't )(?<!n’t )\b(?:use only|only use|based (?:only|solely) on|refer only to) (?:my |our |this |the |uploaded )*"
+      r"(?:notes?|documents?|materials?|videos?|transcripts?|lectures?)\b",
+    re.I,
+)
 EXPLICIT_WEB = re.compile(r"联网|上网|网上|全网|课外|延伸阅读|拓展阅读|官方文档|官方网站|参考资料|相关资料|推荐.{0,12}(?:资料|书籍|论文|教程)|(?:找|搜|查).{0,16}(?:论文|链接|资料|教程)|search (?:the )?web|official docs|further reading", re.I)
 LOCAL_REFERENCE = re.compile(r"视频|课上|课程里|老师|讲者|课件|字幕|原片|幻灯片|文中|原文|这篇|这段|本文|笔记里|第.{1,6}(?:章|节|分钟|页)|\b\d{1,2}:\d{2}\b|in (?:the|this) (?:video|lecture|document)", re.I)
 CURRENT = re.compile(r"最新|现任|现价|近期|今年|最近.{0,10}(?:进展|发布|更新|研究)|当前版本|哪(?:里|儿)下载|latest|current release|release notes", re.I)
 
 
 def needs_web(question):
-    if LOCAL_ONLY.search(question):
+    if NO_WEB.search(question) or LOCAL_ONLY.search(question):
         return False
     if re.search(r"联网|上网|全网|search the web", question, re.I):
         return True
