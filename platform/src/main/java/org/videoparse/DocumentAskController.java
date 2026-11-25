@@ -53,11 +53,13 @@ class DocumentAskController {
                         || !text.isTextual() || text.textValue().isBlank()) continue;
                 var quoted = claim.path("quote");
                 if (!quoted.isTextual()) continue;
-                String quote = quoted.textValue().strip();
+                String literal = quoted.textValue();
+                String quote = literal.strip();
                 if (quote.codePointCount(0, quote.length()) < 4) continue;
                 var hit = hits.get(id.intValue() - 1);
-                int offset = hit.body().indexOf(quote);
+                int offset = hit.body().indexOf(literal);
                 if (offset < 0) continue;
+                offset += literal.indexOf(quote);
                 int first = hit.firstLine() + newlines(hit.body().substring(0, offset));
                 verified.add(new Claim(id.intValue(), text.textValue().strip(), quote, first, first + newlines(quote)));
                 if (verified.size() == 4) break;
