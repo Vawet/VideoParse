@@ -30,7 +30,8 @@ class EvidenceController {
     record Search(List<EvidenceCorpus.Passage> hits, int vectorCandidates) {}
     private Search search(String video,String q) throws Exception {
         if(q==null || q.isBlank() || q.length()>1000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请输入 1 至 1000 字的问题");
-        var docs=results.evidence(video); var lexical=EvidenceCorpus.lexical(docs,q);
+        var index=results.evidence(video);
+        var docs=index.passages(); var lexical=index.lexical(q);
         List<Integer> dense;
         try {dense=vectors.ranked(video,docs,q);}
         catch(Exception e){log.warn("向量检索降级 ({})",e.getClass().getSimpleName());dense=List.of();}

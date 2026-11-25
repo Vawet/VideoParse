@@ -56,29 +56,53 @@ class EvidenceCorpus {
         }
         return map;
     }
-    static List<Integer> lexical(List<Passage> docs,String question) {
-        var query=tokens(question).keySet();
-        var terms=docs.stream().map(p->tokens(p.text())).toList();
-        var df=new HashMap<String,Integer>();
-        var lengths=new int[docs.size()]; int total=0;
-        for(int i=0;i<terms.size();i++) {
-            var frequencies=terms.get(i);
-            for(String q:query) if(frequencies.containsKey(q)) df.merge(q,1,Integer::sum);
-            lengths[i]=frequencies.values().stream().mapToInt(Integer::intValue).sum(); total+=lengths[i];
-        }
-        double avg=(double)Math.max(1,total)/Math.max(1,docs.size());
-        var scores=new HashMap<Integer,Double>();
-        for(int i=0;i<terms.size();i++) {
-            double score=0;
-            for(String q:query) {
-                int f=terms.get(i).getOrDefault(q,0);
-                if(f==0) continue;
-                double idf=Math.log1p((docs.size()-df.get(q)+0.5)/(df.get(q)+0.5));
-                score+=idf*f*2.2/(f+1.2*(0.25+0.75*lengths[i]/avg));
+    static final class Index {
+        private record Posting(int passage, int frequency) {}
+        private final List<Passage> passages;
+        private final Map<String,List<Posting>> postings = new HashMap<>();
+        private final int[] lengths;
+        private final double averageLength;
+        private final int estimatedBytes;
+
+        Index(List<Passage> passages) {
+            this.passages = List.copyOf(passages);
+            lengths = new int[passages.size()];
+            long totalLength = 0, bytes = 256;
+            for (int i = 0; i < passages.size(); i++) {
+                var passage = passages.get(i);
+                bytes += 176L + 2L * (passage.text().length() + (long) Objects.toString(passage.frame(), "").length()
+                    + Objects.toString(passage.source(), "").length());
+                for (var term : tokens(passage.text()).entrySet()) {
+                    int frequency = term.getValue();
+                    postings.computeIfAbsent(term.getKey(), key -> new ArrayList<>()).add(new Posting(i, frequency));
+                    lengths[i] += frequency;
+                }
+                totalLength += lengths[i];
             }
-            if(score>0) scores.put(i,score);
+            averageLength = (double) Math.max(1, totalLength) / Math.max(1, passages.size());
+            for (var term : postings.entrySet())
+                bytes += 192L + 2L * term.getKey().length() + 40L * term.getValue().size();
+            estimatedBytes = (int) Math.min(bytes, Integer.MAX_VALUE);
         }
-        return rank(scores);
+
+        List<Passage> passages() { return passages; }
+        int estimatedBytes() { return estimatedBytes; }
+
+        List<Integer> lexical(String question) {
+            var scores = new HashMap<Integer,Double>();
+            for (String term : tokens(question).keySet()) {
+                var matches = postings.get(term);
+                if (matches == null) continue;
+                int df = matches.size();
+                double idf = Math.log1p((passages.size() - df + 0.5) / (df + 0.5));
+                for (var match : matches) {
+                    int i = match.passage(), f = match.frequency();
+                    double score = idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * lengths[i] / averageLength));
+                    scores.merge(i, score, Double::sum);
+                }
+            }
+            return rank(scores);
+        }
     }
     static List<Integer> rank(Map<Integer,Double> scores) {
         return scores.keySet().stream().sorted(Comparator.<Integer>comparingDouble(scores::get).reversed().thenComparingInt(i->i)).limit(16).toList();

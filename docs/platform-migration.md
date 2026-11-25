@@ -85,7 +85,7 @@ docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml exe
 
 平台将成功的解析结果写入 Neo4j 5.26。一个视频可关联多次分析，每次分析保存完整结果，并关联按顺序编号的语音、画面笔记和 OCR 证据节点。节点保留原文、时间范围及来源帧。结果页和单视频证据检索通过已发布的任务编号读取同一份图快照。Qdrant 继续提供向量排名，视频文件和关键帧保存在原媒体存储。
 
-升级已有 Compose 配置时先运行 `python3 infra/platform/configure.py --add-graph`，再启动平台。独立运行 Spring 时设置 `NEO4J_URL`（例如 `http://127.0.0.1:7474`）、`NEO4J_USER` 和 `NEO4J_PASSWORD`。图记录与证据在同一 Neo4j 事务内创建，MySQL 在完成任务的事务中切换当前版本。证据请求每次校验视频归属并读取当前版本。同一实例按发布版本复用证据，并发首次读取共享一次图库查询。缓存按估算大小限制为 16 MiB，空闲十分钟后过期。读取已发布结果或未缓存证据时，图库不可用会返回 HTTP 503。无图版本的旧工作区仍直接从工作卷读取。备份应一并保留 MySQL、Neo4j 和媒体卷。
+升级已有 Compose 配置时先运行 `python3 infra/platform/configure.py --add-graph`，再启动平台。独立运行 Spring 时设置 `NEO4J_URL`（例如 `http://127.0.0.1:7474`）、`NEO4J_USER` 和 `NEO4J_PASSWORD`。图记录与证据在同一 Neo4j 事务内创建，MySQL 在完成任务的事务中切换当前版本。证据请求每次校验视频归属并读取当前版本。同一实例按发布版本复用证据和 BM25 倒排索引，并发首次读取共享一次图库查询与分词。原文和索引合计按估算大小限制为 16 MiB，空闲十分钟后过期。读取已发布结果或未缓存证据时，图库不可用会返回 HTTP 503。无图版本的旧工作区仍直接从工作卷读取。备份应一并保留 MySQL、Neo4j 和媒体卷。
 
 ## 消息队列与图发布恢复
 

@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,19 +24,10 @@ class AnalysisResults {
     private final EvidenceCorpus workspace;
     private final AnalysisGraph graph;
     private final JdbcClient db;
-    private final Cache<String,List<EvidenceCorpus.Passage>> evidenceByJob = CacheBuilder.newBuilder()
-        .maximumWeight(16L * 1024 * 1024)
-        .weigher((String job, List<EvidenceCorpus.Passage> passages) -> evidenceWeight(passages))
+    private final Cache<String,EvidenceCorpus.Index> evidenceByJob = CacheBuilder.newBuilder()
+        .concurrencyLevel(1).maximumWeight(16L * 1024 * 1024)
+        .weigher((String job, EvidenceCorpus.Index index) -> index.estimatedBytes())
         .expireAfterAccess(Duration.ofMinutes(10)).build();
-
-    private static int evidenceWeight(List<EvidenceCorpus.Passage> passages) {
-        long bytes = 256;
-        for (var p : passages) {
-            bytes += 160L + 2L * (Objects.toString(p.text(), "").length()
-                + (long) Objects.toString(p.frame(), "").length() + Objects.toString(p.source(), "").length());
-        }
-        return (int) Math.min(bytes, Integer.MAX_VALUE);
-    }
 
     AnalysisResults(@Value("${videoparse.data}") Path root, ObjectMapper json, EvidenceCorpus workspace,
                     AnalysisGraph graph, JdbcClient db) {
@@ -70,17 +60,17 @@ class AnalysisResults {
         return Files.isRegularFile(file) ? json.readTree(file.toFile()) : null;
     }
 
-    List<EvidenceCorpus.Passage> evidence(String video) throws IOException {
+    EvidenceCorpus.Index evidence(String video) throws IOException {
         resultFile(video);
         var head = published(video);
         if (head.isPresent()) {
             String job = head.get();
-            try { return evidenceByJob.get(job, () -> List.copyOf(graph.passages(job))); }
+            try { return evidenceByJob.get(job, () -> new EvidenceCorpus.Index(graph.passages(job))); }
             catch (ExecutionException ex) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"暂时无法读取已发布证据",ex.getCause());
             }
         }
-        return workspace.load(video);
+        return new EvidenceCorpus.Index(workspace.load(video));
     }
 
     void publish(String job, String video) throws IOException {
