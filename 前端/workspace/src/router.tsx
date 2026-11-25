@@ -1,5 +1,6 @@
 import NotFound from "./pages/NotFound";
 import ArchivedWorkspace from "./pages/library/ArchivedWorkspace";
+import Interview from "./pages/library/Interview";
 import Library from "./pages/library";
 import LibraryShell from "./pages/library/LibraryShell";
 import Workspace from "./pages/workspace";
@@ -10,6 +11,7 @@ export const routers = [
     children: [
       {path: "/", name: "workspace", element: null},
       {path: "/library", name: "library", element: <Library/>},
+      {path: "/interview", name: "interview", element: <Interview/>},
       {path: "/library/videos/:videoId", name: "archived-video", element: <ArchivedWorkspace/>},
     ],
   }] : [{path: "/", name: "workspace", element: <Workspace/>}]),

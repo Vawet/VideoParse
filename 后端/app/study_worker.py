@@ -4,12 +4,13 @@ import logging
 import os
 import sys
 from app import bilibili_worker, learning_api
+from app.services import document_interview
 
 OPERATIONS = {name: getattr(learning_api, name) for name in (
     "get_keywords", "chat", "search_if_requested", "document_answer", "document_route", "document_web_sources", "review_weak", "review_plan", "review_done", "teach_plan",
     "teach_plan_get", "teach_plan_revise", "quiz_generate", "quiz_get", "quiz_answer", "verify",
 )}
-OPERATIONS.update(bilibili_import=bilibili_worker.import_video, bilibili_comments=bilibili_worker.analyze_comments)
+OPERATIONS.update(document_interview=document_interview.run, bilibili_import=bilibili_worker.import_video, bilibili_comments=bilibili_worker.analyze_comments)
 
 
 def main():

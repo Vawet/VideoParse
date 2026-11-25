@@ -1,3 +1,4 @@
+import { GraduationCap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, FileText, Film, Folder, Waypoints, MessageCircle, PanelLeft, Search, SquarePlay, Plus, Ellipsis, Eye, Pencil, Trash2 } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -51,6 +52,8 @@ function LibraryList({onSelect}: {onSelect?: () => void}) {
         className={cn(row, pathname === "/" && selected)}><SquarePlay size={17}/>视频工作台</Link>
       <Link to="/library" onClick={onSelect} aria-current={pathname === "/library" && !doc ? "page" : undefined}
         className={cn(row, pathname === "/library" && !doc && selected)}><MessageCircle size={17}/>资料问答与复习</Link>
+      <Link to={doc?"/interview?doc="+encodeURIComponent(doc):"/interview"} onClick={onSelect} aria-current={pathname==="/interview"?"page":undefined}
+        className={cn(row,pathname==="/interview" && selected)}><GraduationCap size={17}/>知识库面试</Link>
     </div>
     <div className="px-5 pb-2 pt-7 text-[13px] font-semibold">资料库</div>
     <label className="mx-3 mb-3 flex min-h-8 items-center gap-2 rounded-lg border border-border bg-background/60 px-2.5 text-muted-foreground focus-within:ring-2 focus-within:ring-ring">
