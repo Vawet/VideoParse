@@ -22,7 +22,7 @@ def claims(question, excerpts):
     if not isinstance(reply, dict) or not isinstance(reply.get("claims"), list):
         return []
     valid = []
-    for claim in reply["claims"][:4]:
+    for claim in reply["claims"]:
         if not isinstance(claim, dict):
             continue
         idx, quote, answer = claim.get("id"), claim.get("quote"), claim.get("answer")
@@ -30,4 +30,6 @@ def claims(question, excerpts):
                 and len(quote.strip()) >= 4 and quote in payload["excerpts"][idx-1]["text"]
                 and isinstance(answer, str) and answer.strip()):
             valid.append({"id": idx, "answer": answer.strip()[:800], "quote": quote})
+            if len(valid) == 4:
+                break
     return valid
