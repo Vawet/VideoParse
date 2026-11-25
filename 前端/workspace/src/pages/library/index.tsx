@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Upload } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { ExternalLink, FileText, Upload } from "lucide-react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import type { LibraryDocument as Document, WebSource } from "@/lib/api";
 import { api } from "./api";
@@ -14,6 +14,20 @@ type Answer = { source: "web"; answer: string; web_sources: WebSource[] } |
   { source: "document"; answer: string; generated: boolean; used_vectors: boolean; hits: Passage[]; claims?: Claim[] };
 type Reading = { doc: Document; lines: string[]; from: number; to: number; page: number; locate: boolean };
 const PAGE_LINES = 160;
+
+// The hash uses zero-based line boundaries; the reader and API use inclusive line numbers.
+function lineFragment(first: number, last: number) {
+  return `#line=${first - 1},${last}`;
+}
+
+function fragmentRange(hash: string) {
+  const match = /^#line=(\d+),(\d+)$/.exec(hash);
+  if (!match) return null;
+  const first = Number(match[1]) + 1;
+  const last = Number(match[2]);
+  return Number.isSafeInteger(first) && Number.isSafeInteger(last) && first <= last ? {first, last} : null;
+}
+
 export default function Library() {
   const [params] = useSearchParams();
   const selected = params.get("doc") || "";
@@ -21,6 +35,8 @@ export default function Library() {
 }
 
 function LibraryPage({selected}: {selected: string}) {
+  const {hash, search} = useLocation();
+  const navigate = useNavigate();
   const library = useLibrary();
   const docs = library.data?.documents ?? [];
   const current = docs.find(d => d.id === selected);
@@ -46,14 +62,27 @@ function LibraryPage({selected}: {selected: string}) {
     const generation = ++readId.current;
     try {
       const data = await api<{document: Document; markdown: string}>("/" + encodeURIComponent(id));
-      if (generation === readId.current) setReading({doc: data.document, lines: data.markdown.split("\n"),
-        from, to, locate, page: Math.floor((from - 1) / PAGE_LINES)});
+      if (generation !== readId.current) return;
+      const lines = data.markdown.split("\n");
+      const highlight = locate && from <= lines.length;
+      setReading({doc: data.document, lines, from, to: Math.min(to, lines.length), locate: highlight,
+        page: highlight ? Math.floor((from - 1) / PAGE_LINES) : 0});
     } catch (e) { if (generation === readId.current) setError((e as Error).message); }
   }, []);
   useEffect(() => {
-    if (selected) void read(selected, 1, 1, false);
+    const range = fragmentRange(hash);
+    if (selected) void read(selected, range?.first, range?.last, Boolean(range));
     return () => { readId.current++; };
-  }, [selected, read]);
+  }, [selected, hash, read]);
+
+  function openSource(id: string, first: number, last: number) {
+    const fragment = lineFragment(first, last);
+    if (id === selected && hash !== fragment) {
+      void navigate({search, hash: fragment}, {preventScrollReset: true});
+    } else {
+      void read(id, first, last);
+    }
+  }
 
   async function upload(files: File[]) {
     if (!files.length) return;
@@ -137,7 +166,7 @@ function LibraryPage({selected}: {selected: string}) {
                 const hit = answer.hits[claim.id - 1];
                 return <div key={index} className="space-y-1.5">
                   <p className="whitespace-pre-wrap text-sm">{claim.answer} [{claim.id}]</p>
-                  <button type="button" onClick={() => void read(hit.docId, claim.firstLine, claim.lastLine)}
+                  <button type="button" onClick={() => openSource(hit.docId, claim.firstLine, claim.lastLine)}
                     className="block w-full border-l-2 border-gold/60 py-1 pl-3 text-left hover:bg-accent">
                     <span className="block whitespace-pre-wrap break-words text-sm">{claim.quote}</span>
                     <span className="mt-1 block text-xs text-muted-foreground">{hit.name} · 第 {claim.firstLine}–{claim.lastLine} 行</span>
@@ -146,7 +175,7 @@ function LibraryPage({selected}: {selected: string}) {
               }) : <p className="whitespace-pre-wrap text-sm">{answer.answer}</p>}
               {answer.source === "web" ? answer.web_sources.map((s,i) => <a key={s.url} className="block text-sm text-primary underline" href={s.url} target="_blank" rel="noopener noreferrer">[{i+1}] {s.title}</a>) :
                 answer.hits.map((h,i) => <div key={h.docId+"/"+h.ordinal}>
-                  <button onClick={()=>void read(h.docId,h.firstLine,h.lastLine)}
+                  <button onClick={()=>openSource(h.docId,h.firstLine,h.lastLine)}
                   className="block w-full rounded-md border border-border p-3 text-left hover:bg-accent">
                   <span className="text-sm font-medium">[{i+1}] {h.name} · 第 {h.firstLine}–{h.lastLine} 行</span>
                   {h.heading && <span className="block text-xs text-muted-foreground">{h.heading}</span>}
@@ -158,9 +187,14 @@ function LibraryPage({selected}: {selected: string}) {
                 </div>)}
             </article>}
           </section>
-          <ReviewQueue documentId={selected} updated={reviewUpdated} openSource={read} onRemove={()=>setSaved(new Set())}/>
+          <ReviewQueue documentId={selected} updated={reviewUpdated} openSource={openSource} onRemove={()=>setSaved(new Set())}/>
           {reading && <section className={`rounded-xl border border-border bg-card p-5 ${selected ? "order-first" : ""}`}>
-            <h2 className="mb-3 flex items-center gap-2 font-semibold"><FileText size={16}/>{selected === reading.doc.id ? "原文" : reading.doc.name+" · 原文"}</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="flex min-w-0 items-center gap-2 break-all font-semibold"><FileText size={16} className="shrink-0"/>{selected === reading.doc.id ? "原文" : reading.doc.name+" · 原文"}</h2>
+              {reading.locate && <a className="inline-flex items-center gap-1.5 text-xs text-primary underline"
+                href={`/library?doc=${encodeURIComponent(reading.doc.id)}${lineFragment(reading.from, reading.to)}`}
+                target="_blank" rel="noopener noreferrer">新标签页打开引文<ExternalLink size={13} aria-hidden/></a>}
+            </div>
             {reading.lines.length > PAGE_LINES && <nav aria-label="原文分页" className="mb-3 flex items-center gap-3 text-sm">
               <Button variant="outline" size="sm" disabled={reading.page === 0}
                 onClick={()=>setReading({...reading, page: reading.page - 1})}>上一页</Button>
