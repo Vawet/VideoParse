@@ -6,9 +6,30 @@ export const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ??
   "http://127.0.0.1:5000";
 
+let workspaceId = "";
+let sessionRequest: Promise<void> | undefined;
+const transientWorkspace = Math.random().toString(36).slice(2);
+
+export function openWorkspace(): Promise<void> {
+  if (!platform || workspaceId) return Promise.resolve();
+  if (!sessionRequest) {
+    const load = async () => {
+      const { workspace_id } = await request<{ workspace_id: string }>("/v2/session", {
+        cache: "no-store", signal: AbortSignal.timeout(5000),
+      });
+      workspaceId = workspace_id;
+    };
+    // Serialize the first Set-Cookie across tabs opened at the same time.
+    sessionRequest = (navigator.locks ? navigator.locks.request("vp-session:" + API_BASE, load) : load())
+      .then(() => undefined).finally(() => { sessionRequest = undefined; });
+  }
+  return sessionRequest;
+}
+
 const CLIENT_KEY = "videoparse-client-id";
 
 export function getClientId(): string {
+  if (platform) return workspaceId || transientWorkspace;
   let id = localStorage.getItem(CLIENT_KEY);
   if (!id) {
     id = crypto.randomUUID();
@@ -36,6 +57,7 @@ const postJson = <T>(path: string, body: unknown) =>
 
 /** The upload gate: a question that must be answered before a one-time token is issued. */
 export async function getUploadGate() {
+  await openWorkspace();
   return request<{ required: boolean; question: string }>(platform ? "/v2/gate" : "/upload/question");
 }
 
@@ -50,7 +72,7 @@ export function uploadVideo(
   onProgress: (percent: number) => void,
   signal?: AbortSignal,
 ): Promise<{ filepath: string; video_id: string }> {
-  if (platform) return resumableUpload(API_BASE, file, token, onProgress, signal);
+  if (platform) return resumableUpload(API_BASE, getClientId(), file, token, onProgress, signal);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/upload`);
@@ -195,11 +217,11 @@ export async function askVideo(
   videoId: string,
   question: string,
   history: unknown[],
+  conversationId?: string,
 ) {
-  return postJson<{ answer: string; history: unknown[]; citations: RawCitation[] }>("/chat", {
+  return postJson<{ answer: string; history: unknown[]; conversation_id?: string; citations: RawCitation[] }>("/chat", {
     video_id: videoId,
     question,
-    history,
-    client_id: getClientId(),
+    ...(platform ? { conversation_id: conversationId } : { history, client_id: getClientId() }),
   });
 }

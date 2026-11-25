@@ -6,7 +6,7 @@ async function digest(data: ArrayBuffer) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function resumableUpload(base: string, file: File, token: string,
+export async function resumableUpload(base: string, workspace: string, file: File, token: string,
   progress: (percent: number) => void, signal?: AbortSignal): Promise<{ filepath: string; video_id: string }> {
   const hashes: string[] = [];
   for (let pos = 0; pos < file.size; pos += CHUNK) {
@@ -14,7 +14,7 @@ export async function resumableUpload(base: string, file: File, token: string,
     hashes.push(await digest(await file.slice(pos, pos + CHUNK).arrayBuffer()));
   }
   const fingerprint = await digest(new TextEncoder().encode(JSON.stringify([file.name, file.size, hashes])).buffer);
-  const key = `videoparse-upload:${base}:${fingerprint}`;
+  const key = `videoparse-upload:${base}:${workspace}:${fingerprint}`;
   async function request(path: string, options: RequestInit, missingOK = false) {
     const response = await fetch(`${base}/v2/uploads${path}`, { ...options, signal });
     if (missingOK && response.status === 404) return null;

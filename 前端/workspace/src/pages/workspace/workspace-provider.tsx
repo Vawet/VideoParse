@@ -71,6 +71,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef<{ videoId: string; filepath: string; name: string } | null>(null);
   const liveStepRef = useRef<ParseStepId>("audio");
   const liveErrorRef = useRef<string | null>(null);
+  const conversationRef = useRef<string | undefined>(undefined);
+  const chatGeneration = useRef(0);
   const chatHistoryRef = useRef<unknown[]>([]);
 
   const [status, setStatus] = useState<WorkspaceStatus>("empty");
@@ -157,6 +159,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setMessages([]);
     setChatBusy(false);
     chatBusyRef.current = false;
+    chatGeneration.current++;
+    conversationRef.current = undefined;
     chatHistoryRef.current = [];
     setNoticeDismissed(false);
     quiz.restart();
@@ -415,7 +419,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       ]);
       setChatBusy(true);
 
+      const generation = chatGeneration.current;
       const settle = (answer: ChatMessage["answer"]) => {
+        if (generation !== chatGeneration.current) return;
         setMessages((previous) =>
           previous.map((message) =>
             message.id === pendingId ? { ...message, status: "done", answer } : message,
@@ -426,8 +432,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       };
 
       if (source === "live" && videoId && liveLecture) {
-        askVideo(videoId, trimmed, chatHistoryRef.current)
+        askVideo(videoId, trimmed, chatHistoryRef.current, conversationRef.current)
           .then((reply) => {
+            if (generation !== chatGeneration.current) return;
+            conversationRef.current = reply.conversation_id;
             chatHistoryRef.current = reply.history;
             settle(adaptChatAnswer(reply, liveLecture));
           })
@@ -442,6 +450,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const clearChat = useCallback(() => {
+    chatGeneration.current++;
+    conversationRef.current = undefined;
+    chatHistoryRef.current = [];
     if (chatTimer.current) window.clearTimeout(chatTimer.current);
     chatBusyRef.current = false;
     setChatBusy(false);

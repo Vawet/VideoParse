@@ -40,15 +40,15 @@ async function generate(){
   remember("quiz",quizId.value);
 }
 async function grade(id:string) {
-  grades.value[id]=await api("/quiz/"+quizId.value+"/answer",{client_id:getClientId(),question_id:id,answer:answers.value[id]});
+  grades.value[id]=await api("/quiz/"+quizId.value+"/answer",{question_id:id,answer:answers.value[id]});
 }
 async function review(){
-  const data=await api("/review/plan",{client_id:getClientId(),course_id:await ensureCourse(),daily_minutes:minutes.value,use_llm:false});
+  const data=await api("/review/plan",{course_id:await ensureCourse(),daily_minutes:minutes.value,use_llm:false});
   days.value=data.plan.days;overflow.value=data.plan.overflow;checked.value={};
 }
 async function mark(item:Item){
   const done=!checked.value[item.id];
-  await api("/review/done",{client_id:getClientId(),course_id:await ensureCourse(),item_id:item.id,done});
+  await api("/review/done",{course_id:await ensureCourse(),item_id:item.id,done});
   checked.value[item.id]=done;
 }
 function showPlan(data:{plan_id:string;sections:Section[];version:number}){
