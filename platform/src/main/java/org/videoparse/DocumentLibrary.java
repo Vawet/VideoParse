@@ -25,7 +25,7 @@ class DocumentLibrary {
     record Document(String id,String name,int chunks,int indexedChunks,String indexState) {}
     private static final String FIELDS="id,name,chunks,indexed_chunks,index_state";
     List<Document> list() {
-        return db.sql("SELECT "+FIELDS+" FROM vp_document WHERE owner_id=? ORDER BY created_at DESC,id")
+        return db.sql("SELECT "+FIELDS+" FROM vp_document WHERE owner_id=? AND folder_id='documents' ORDER BY created_at DESC,id")
             .param(visitor.id()).query(Document.class).list();
     }
     Document require(String doc) {

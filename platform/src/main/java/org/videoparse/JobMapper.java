@@ -33,6 +33,8 @@ public interface JobMapper {
     int recordFailure(String id,int attempt,int delay);
     @Update("UPDATE vp_job SET status=#{status},error=#{error},active_video=NULL WHERE id=#{id} AND status=#{expected}")
     int finish(String id,String expected,String status,String error);
+    @Update("UPDATE videos SET folder_id='videos' WHERE id=#{video} AND folder_id IS NULL")
+    void archiveVideo(String video);
     @Insert("INSERT INTO vp_graph_head(video_id,job_id) VALUES(#{video},#{job}) ON DUPLICATE KEY UPDATE job_id=#{job}")
     void publishHead(String video,String job);
     @Delete("DELETE FROM vp_graph_head WHERE video_id=#{video}")

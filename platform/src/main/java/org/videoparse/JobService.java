@@ -56,6 +56,7 @@ class JobService {
             jobs.clearDispatch(id);
             if (error == null) {
                 var video = jobs.get(id).videoId();
+                jobs.archiveVideo(video);
                 if (expected.equals("publishing")) jobs.publishHead(video,id);
                 else jobs.clearHead(video);
             }
