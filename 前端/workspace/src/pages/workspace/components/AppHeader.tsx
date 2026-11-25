@@ -13,7 +13,7 @@ import { ParseStatusBadge } from "./ParseStatusBadge";
 import { useWorkspace } from "../hooks/use-workspace";
 
 export function AppHeader() {
-  const { title, lecture, status, available, exportNotes, exportMindmap, clearProject } =
+  const { title, lecture, status, available, recent, reopen, exportNotes, exportMindmap, clearProject } =
     useWorkspace();
 
   return (
@@ -89,6 +89,15 @@ export function AppHeader() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {import.meta.env.VITE_PLATFORM === "true" && recent.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="outline" size="sm">最近解析</Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-72 overflow-auto">
+              <DropdownMenuLabel>此浏览器的任务</DropdownMenuLabel>
+              {recent.map(row => <DropdownMenuItem key={row.taskId} onSelect={() => reopen(row)}>{row.name}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <ThemeToggle />
       </div>
     </header>

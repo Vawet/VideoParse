@@ -39,6 +39,8 @@ export const NO_RESULTS: Record<ResultKey, boolean> = {
 };
 
 export type WorkspaceValue = {
+  recent: import("@/lib/recent-tasks").RecentTask[];
+  reopen: (row: import("@/lib/recent-tasks").RecentTask) => void;
   status: WorkspaceStatus;
   title: string;
   lecture: LectureData;

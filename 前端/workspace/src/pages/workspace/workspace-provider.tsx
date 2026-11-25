@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/sonner";
 import { exportSvgToPng } from "@/lib/export-svg-png";
 import {
+  API_BASE,
   askVideo,
   fetchResult,
   getUploadGate,
@@ -11,6 +12,7 @@ import {
   verifyUploadGate,
   type RawResult,
 } from "@/lib/api";
+import { recentTasks, rememberTask, type RecentTask } from "@/lib/recent-tasks";
 import { adaptChatAnswer, adaptResult } from "./data/adapter";
 import { answerQuestion } from "./data/qa";
 import { DEMO_LECTURE, buildLecture, findSegmentAt } from "./data/lecture";
@@ -66,7 +68,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const lastRunMode = useRef<"demo" | "upload" | "fail">("demo");
   const abortRef = useRef<AbortController | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  const sessionRef = useRef<{ videoId: string; filepath: string } | null>(null);
+  const sessionRef = useRef<{ videoId: string; filepath: string; name: string } | null>(null);
   const liveStepRef = useRef<ParseStepId>("audio");
   const liveErrorRef = useRef<string | null>(null);
   const chatHistoryRef = useRef<unknown[]>([]);
@@ -92,6 +94,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [rawResult, setRawResult] = useState<RawResult | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
 
+  const [recent, setRecent] = useState(recentTasks);
+  const [stageDetail, setStageDetail] = useState<Partial<Record<ParseStepId,string>>>({});
   const run = useParseRun();
   const liveLecture = useMemo(
     () =>
@@ -216,12 +220,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [stopLive]);
 
   /** Starts (or restarts) the backend Agent for the uploaded video and follows its event stream. */
-  const runLive = useCallback(async () => {
+  const runLive = useCallback(async (existingTask?: string) => {
     const session = sessionRef.current;
     if (!session) return;
     unsubscribeRef.current?.();
     liveStepRef.current = "audio";
     liveErrorRef.current = null;
+    setStageDetail({});
     resetRunOutputs();
     setRawResult(null);
     setActiveTab("overview");
@@ -229,13 +234,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setStatus("parsing");
 
     try {
-      const { task_id: taskId } = await startAnalyze(session.filepath, session.videoId);
+      const taskId = existingTask ?? (await startAnalyze(session.filepath, session.videoId)).task_id;
+      if (sessionRef.current !== session) return;
+      if (import.meta.env.VITE_PLATFORM === "true") setRecent(rememberTask({ ...session, taskId }));
       unsubscribeRef.current = subscribeTask(taskId, (event) => {
+        if (sessionRef.current !== session) return;
         if (event.type === "tool_start") {
           liveStepRef.current = TOOL_STEP[event.tool] ?? liveStepRef.current;
         } else if (event.type === "tool_end") {
           const step = TOOL_STEP[event.tool];
-          if (step && event.ok) run.markLive(step);
+          if (step && event.ok) {
+            const obs = (event.observation ?? {}) as Record<string, unknown>;
+            const detail = typeof obs.kept_frames === "number" ? `保留 ${obs.kept_frames} 个关键帧` :
+              typeof obs.segments === "number" ? `处理 ${obs.segments} 个片段` :
+              typeof obs.sections === "number" ? `生成 ${obs.sections} 个章节` : "服务端已完成此步骤";
+            setStageDetail(prev => ({...prev,[step]: obs.resumed ? detail+"（复用检查点）" : detail}));
+            run.markLive(step);
+          }
         } else if (event.type === "error") {
           liveErrorRef.current = event.text;
         } else if (event.type === "end") {
@@ -245,6 +260,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           }
           fetchResult(session.videoId)
             .then((result) => {
+              if (sessionRef.current !== session) return;
               setRawResult(result);
               setAvailable(ALL_RESULTS);
               run.finishLive();
@@ -286,7 +302,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
         const uploaded = await uploadVideo(file, token, setUploadProgress, abort.signal);
         setUploadProgress(100);
-        sessionRef.current = { videoId: uploaded.video_id, filepath: uploaded.filepath };
+        sessionRef.current = { videoId: uploaded.video_id, filepath: uploaded.filepath, name: file.name };
         setVideoId(uploaded.video_id);
         setSource("live");
         lastRunMode.current = "upload";
@@ -302,6 +318,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     },
     [cancelUpload, resetRunOutputs, runLive, stopLive],
   );
+
+  const reopen = useCallback((row: RecentTask) => {
+    stopLive();
+    sessionRef.current = {videoId:row.videoId, filepath:row.filepath, name:row.name};
+    setVideoMode("file"); setSource("live"); setVideoId(row.videoId); setMediaDuration(null);
+    setTitle(row.name.replace(/\.[^.]+$/, ""));
+    setVideoUrl(previous => {
+      if(previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
+      return API_BASE+"/uploads/"+encodeURIComponent(row.filepath);
+    });
+    setFileMeta(null);
+    void runLive(row.taskId);
+  }, [runLive, stopLive]);
 
   const retry = useCallback(() => {
     if (source === "live") {
@@ -474,7 +503,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     lecture,
     duration,
     progress: run.progress,
-    steps: PARSE_STEPS,
+    steps: source === "live" ? PARSE_STEPS.map(step => ({...step,detail:"正在处理…",doneDetail:stageDetail[step.id] ?? "已完成"})) : PARSE_STEPS,
+    recent, reopen,
     stepStatus: (step: ParseStep) => run.stepStatus(step, run.done),
     activeStep,
     failure: run.failure,
