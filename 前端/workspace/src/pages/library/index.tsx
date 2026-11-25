@@ -9,8 +9,9 @@ import { ThemeToggle } from "../workspace/components/ThemeToggle";
 import { ReviewQueue } from "./ReviewQueue";
 
 type Passage = { docId: string; name: string; heading: string; ordinal: number; firstLine: number; lastLine: number; body: string };
+type Claim = { id: number; answer: string; quote: string; firstLine: number; lastLine: number };
 type Answer = { source: "web"; answer: string; web_sources: WebSource[] } |
-  { source: "document"; answer: string; generated: boolean; used_vectors: boolean; hits: Passage[] };
+  { source: "document"; answer: string; generated: boolean; used_vectors: boolean; hits: Passage[]; claims?: Claim[] };
 type Reading = { doc: Document; lines: string[]; from: number; to: number; page: number; locate: boolean };
 const PAGE_LINES = 160;
 export default function Library() {
@@ -132,7 +133,17 @@ function LibraryPage({selected}: {selected: string}) {
             </form>
             {answer && <article className="space-y-3 border-t border-border pt-4" aria-live="polite">
               <h3 className="text-sm font-semibold">{answer.source === "web" ? "联网资料" : answer.generated ? "依据原文生成" : "原文检索结果"}</h3>
-              <p className="whitespace-pre-wrap text-sm">{answer.answer}</p>
+              {answer.source === "document" && answer.claims?.length ? answer.claims.map((claim, index) => {
+                const hit = answer.hits[claim.id - 1];
+                return <div key={index} className="space-y-1.5">
+                  <p className="whitespace-pre-wrap text-sm">{claim.answer} [{claim.id}]</p>
+                  <button type="button" onClick={() => void read(hit.docId, claim.firstLine, claim.lastLine)}
+                    className="block w-full border-l-2 border-gold/60 py-1 pl-3 text-left hover:bg-accent">
+                    <span className="block whitespace-pre-wrap break-words text-sm">{claim.quote}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{hit.name} · 第 {claim.firstLine}–{claim.lastLine} 行</span>
+                  </button>
+                </div>;
+              }) : <p className="whitespace-pre-wrap text-sm">{answer.answer}</p>}
               {answer.source === "web" ? answer.web_sources.map((s,i) => <a key={s.url} className="block text-sm text-primary underline" href={s.url} target="_blank" rel="noopener noreferrer">[{i+1}] {s.title}</a>) :
                 answer.hits.map((h,i) => <div key={h.docId+"/"+h.ordinal}>
                   <button onClick={()=>void read(h.docId,h.firstLine,h.lastLine)}
