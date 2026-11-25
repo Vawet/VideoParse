@@ -22,6 +22,7 @@ import { QuizTab } from "../tabs/QuizTab";
 import { ReviewTab } from "../tabs/ReviewTab";
 import { SlidesTab } from "../tabs/SlidesTab";
 import { TeachTab } from "../tabs/TeachTab";
+import EvidencePanel from "./EvidencePanel";
 import { TabPlaceholder } from "./TabPlaceholder";
 
 type TabMeta = { key: TabKey; label: string; icon: LucideIcon; gate: ResultKey };
@@ -37,8 +38,8 @@ const TABS: TabMeta[] = [
   { key: "teach", label: "讲授", icon: GraduationCap, gate: "teach" },
 ];
 
-/** Tabs whose backend integration is not wired yet; hidden behind a notice for real uploads. */
-const UNSUPPORTED_LIVE: TabKey[] = ["quiz", "review", "teach"];
+/** Learning tools with platform-backed views for uploaded videos. */
+const LEARNING_TABS: TabKey[] = ["quiz", "review", "teach"];
 
 const CONTENT: Record<TabKey, React.ComponentType> = {
   overview: OverviewTab,
@@ -53,7 +54,7 @@ const CONTENT: Record<TabKey, React.ComponentType> = {
 
 /** The eight result views, numbered like a table of contents. */
 export function ResultTabs() {
-  const { activeTab, setActiveTab, available, unlockingKeys, isLive } = useWorkspace();
+  const { activeTab, setActiveTab, available, unlockingKeys, isLive, videoId, seekTo } = useWorkspace();
 
   return (
     <Tabs
@@ -110,7 +111,9 @@ export function ResultTabs() {
               value={tab.key}
               className="mt-0 animate-fade-in focus-visible:outline-none"
             >
-              {isLive && UNSUPPORTED_LIVE.includes(tab.key) ? (
+              {isLive && videoId && import.meta.env.VITE_PLATFORM === "true" && available[tab.gate] && LEARNING_TABS.includes(tab.key) ? (
+                <EvidencePanel video={videoId} view={tab.key} seek={seekTo} />
+              ) : isLive && LEARNING_TABS.includes(tab.key) ? (
                 <TabPlaceholder label={tab.label} unsupported />
               ) : available[tab.gate] ? (
                 <Content />

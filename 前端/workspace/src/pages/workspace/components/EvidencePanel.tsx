@@ -1,20 +1,20 @@
 import { useEffect, useRef } from "react";
 import { API_BASE } from "@/lib/api";
 
-export default function EvidencePanel({video, seek}: {video: string; seek: (time: number) => void}) {
+export default function EvidencePanel({video, seek, view = "evidence"}: {video: string; seek: (time: number) => void; view?: string}) {
   const element = useRef<HTMLDivElement>(null);
   const jump = useRef(seek);
   useEffect(() => { jump.current = seek; }, [seek]);
   useEffect(() => {
     let disposed = false;
     let unmount: (() => void) | undefined;
-    void Promise.all([import("vue"), import("./EvidenceSearch.vue")]).then(([{createApp}, component]) => {
+    void Promise.all([import("vue"), view === "evidence" ? import("./EvidenceSearch.vue") : import("./LiveStudy.vue")]).then(([{createApp}, component]) => {
       if (disposed || !element.current) return;
-      const app = createApp(component.default, { base: API_BASE, video, jump: (t: number) => jump.current(t) });
+      const app = createApp(component.default, { base: API_BASE, video, view, jump: (t: number) => jump.current(t) });
       app.mount(element.current);
       unmount = () => app.unmount();
     }).catch(() => { if (!disposed && element.current) element.current.textContent = "证据检索面板加载失败，请刷新重试"; });
     return () => { disposed = true; unmount?.(); };
-  }, [video]);
+  }, [video, view]);
   return <div ref={element} />;
 }
