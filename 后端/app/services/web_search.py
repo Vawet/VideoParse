@@ -26,12 +26,16 @@ def needs_web(question):
 
 
 def _url(raw):
-    if not isinstance(raw, str) or any(c.isspace() or ord(c) < 32 for c in raw) or "\\" in raw:
+    def unsafe(value):
+        return any(c.isspace() or ord(c) < 32 or c == "\\" for c in value)
+    if not isinstance(raw, str) or unsafe(raw):
         return None
     try:
         u = urlsplit(raw)
         if u.hostname in {"duckduckgo.com", "www.duckduckgo.com"} and u.path == "/l/":
             raw = parse_qs(u.query).get("uddg", [""])[0]
+            if unsafe(raw):
+                return None
             u = urlsplit(raw)
         if u.scheme in {"https", "http"} and u.hostname and not (u.username or u.password) and len(raw) <= 2048:
             return raw

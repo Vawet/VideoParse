@@ -447,6 +447,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         askDemo(trimmed).then(reply => settle(reply.source === "demo"
           ? answerQuestion(trimmed) : adaptChatAnswer(reply, DEMO_LECTURE)))
           .catch(error => {
+            if (!(error instanceof TypeError)) {
+              settle({ text: errorMessage(error), citations: [] });
+              return;
+            }
             const demo = answerQuestion(trimmed);
             settle({ ...demo, text: `自动选源暂不可用（${errorMessage(error)}）。以下来自内置示例。\n\n${demo.text}` });
           });

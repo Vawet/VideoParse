@@ -36,3 +36,4 @@ def test_search_failure(monkeypatch):
     monkeypatch.setattr(web_search, "search", unavailable)
     assert web_search.web_reply("official docs")[1] == 503
     assert web_search._url("javascript:void(0)") is None
+    assert web_search._url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fa%0Ab") is None
