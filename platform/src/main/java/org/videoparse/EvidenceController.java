@@ -33,7 +33,7 @@ class EvidenceController {
         var index=results.evidence(video);
         var docs=index.passages(); var lexical=index.lexical(q);
         List<Integer> dense;
-        try {dense=vectors.ranked(video,docs,q);}
+        try {dense=vectors.ranked(video,index,q);}
         catch(Exception e){log.warn("向量检索降级 ({})",e.getClass().getSimpleName());dense=List.of();}
         var scores=new HashMap<Integer,Double>();
         for(var ranking:List.of(lexical,dense))

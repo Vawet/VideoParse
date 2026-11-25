@@ -3,6 +3,9 @@ package org.videoparse;
 import com.fasterxml.jackson.databind.*;
 import java.io.*;
 import java.nio.file.*;
+import java.security.DigestOutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.regex.*;
@@ -63,6 +66,7 @@ class EvidenceCorpus {
         private final int[] lengths;
         private final double averageLength;
         private final int estimatedBytes;
+        private String vectorRevision;
 
         Index(List<Passage> passages) {
             this.passages = List.copyOf(passages);
@@ -87,6 +91,16 @@ class EvidenceCorpus {
 
         List<Passage> passages() { return passages; }
         int estimatedBytes() { return estimatedBytes; }
+
+        synchronized String vectorRevision(ObjectMapper json) throws IOException, NoSuchAlgorithmException {
+            if (vectorRevision == null) {
+                var digest = MessageDigest.getInstance("SHA-256");
+                // Keep the original JSON byte representation used by existing Qdrant points.
+                json.writeValue(new DigestOutputStream(OutputStream.nullOutputStream(), digest), passages);
+                vectorRevision = HexFormat.of().formatHex(digest.digest());
+            }
+            return vectorRevision;
+        }
 
         List<Integer> lexical(String question) {
             var scores = new HashMap<Integer,Double>();

@@ -6,7 +6,6 @@ import dev.langchain4j.data.segment.TextSegment;
 import java.net.URI;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Semaphore;
@@ -85,9 +84,10 @@ class VectorIndex {
         return hits;
     }
 
-    List<Integer> ranked(String video,List<EvidenceCorpus.Passage> docs,String q) throws Exception {
+    List<Integer> ranked(String video,EvidenceCorpus.Index index,String q) throws Exception {
+        var docs=index.passages();
         if(endpoint.isBlank() || docs.isEmpty()) return List.of();
-        String rev=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(docs)));
+        String rev=index.vectorRevision(json);
         var match=List.of(condition("video",video),condition("revision",rev));
         var filter=Map.of("must",match);
         var info=call("GET","",null);
