@@ -30,6 +30,7 @@ class JobService {
         if (!graph.enabled()) {
             finish(id, "running", null);
         } else if (jobs.mediaReady(id) == 1) {
+            jobs.clearDispatch(id);
             if (mq) jobs.enqueue(id, "graph", 0);
             jobs.event(id, json.createObjectNode().put("type","progress").put("stage","publishing")
                 .put("text","解析产物已保存，等待写入图数据库").toString());

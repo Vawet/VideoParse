@@ -78,7 +78,8 @@ class JobDispatch {
             connect();
             var pending = db.sql("""
                 SELECT d.job_id,d.stage,d.attempt FROM vp_dispatch d JOIN vp_job j ON j.id=d.job_id
-                WHERE d.stage='parse' OR j.publish_after<=CURRENT_TIMESTAMP(3)
+                WHERE (d.stage='parse' AND j.status IN ('queued','running'))
+                   OR (d.stage='graph' AND j.status='publishing' AND j.publish_after<=CURRENT_TIMESTAMP(3))
                 ORDER BY d.created_at LIMIT 32
                 """).query(Dispatch.class).list();
             for (var row : pending) {
