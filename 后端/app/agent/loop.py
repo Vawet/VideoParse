@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from functools import cache
 
 from app import config
 from app.agent import pipeline, prompts, tools
@@ -377,7 +378,7 @@ _COURSE_CITE_RE = re.compile(r"[\[【]([^\[\]【】]+?)\s+(\d{1,2}:\d{2}(?::\d{2
 COURSE_NOT_MENTIONED = "课程中未提及"
 
 
-def extract_course_citations(answer: str, videos):
+def extract_course_citations(answer: str, videos, *, segments_for=None):
     """校验课程内的唯一完整标题或视频编号，并取对应时间段的字幕。"""
     by_id = {video["id"]: video for video in videos}
     by_title = {}
@@ -399,7 +400,7 @@ def extract_course_citations(answer: str, videos):
         seen.add(key)
         seg = None
         if video:
-            segs = video["segments"]
+            segs = segments_for(video["id"]) if segments_for is not None else video["segments"]
             seg = (next((s for s in segs if s["start_time"] <= sec < s["end_time"]), None)
                    or next((s for s in segs if s["start_time"] - CITE_TOLERANCE <= sec <= s["end_time"] + CITE_TOLERANCE), None))
         out.append({"video_id": video["id"] if video else None, "video_title": video["title"] if video else title,
@@ -415,11 +416,16 @@ def chat_with_course(course_id, history, question, emit=lambda e: None, client_i
         raise ValueError("课程不存在")
     ws = CourseWorkspace(course_id)
     ws.client_id = client_id
-    videos = [{"id": v["id"], "title": v["title"], "segments": repo.get_transcript(v["id"])} for v in course["videos"]]
+    videos = course["videos"]
+
+    @cache
+    def segments_for(video_id):
+        return repo.get_transcript(video_id, course_id=course_id)
+
     with _collect_chat_stats():
         messages = _chat_messages(prompts.COURSE_CHAT_SYSTEM_PROMPT, history, question)
         answer = _run_chat("course", ws, messages, emit, max_steps=8)
-        citations = extract_course_citations(answer, videos)
+        citations = extract_course_citations(answer, videos, segments_for=segments_for)
         if videos and COURSE_NOT_MENTIONED not in answer and not any(c["valid"] for c in citations):
             messages.append({"role": "assistant", "content": answer})
             messages.append({"role": "user", "content": (
@@ -427,7 +433,7 @@ def chat_with_course(course_id, history, question, emit=lambda e: None, client_i
                 "同名视频请标注 [video_id=完整编号 mm:ss]，使用工具返回的 video_id。"
                 "确实没有依据就直接回答“课程中未提及”。")})
             answer = _run_chat("course", ws, messages, emit, max_steps=6)
-            citations = extract_course_citations(answer, videos)
+            citations = extract_course_citations(answer, videos, segments_for=segments_for)
         new_history = [m for m in history if m.get("role") in ("user", "assistant")]
         new_history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
         return answer, new_history, citations

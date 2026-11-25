@@ -80,6 +80,24 @@ def test_chat_with_course_retries_without_citation(course, monkeypatch):
         loop.chat_with_course("nope", [], "?")
 
 
+def test_course_citation_reads_only_referenced_transcripts(course, monkeypatch):
+    reads = []
+    get_transcript = repo.get_transcript
+
+    def traced(video_id, **kwargs):
+        reads.append(video_id)
+        return get_transcript(video_id, **kwargs)
+
+    monkeypatch.setattr(repo, "get_transcript", traced)
+    answers = iter(["课程中未提及", "参见 [video_id=vb 09:00]", "参见 [video_id=vb 00:05]"])
+    monkeypatch.setattr(loop, "run_agent", lambda *args, **kwargs: next(answers))
+    assert not loop.chat_with_course(course, [], "介绍了哪些乐器？")[2]
+    assert reads == []
+    citation, = loop.chat_with_course(course, [], "如何计算梯度？")[2]
+    assert citation["text"] == B[0]["text"] and reads == ["vb"]
+    assert get_transcript("vid-learn") and get_transcript("vid-learn", course_id=course) == []
+
+
 def test_http_courses_flow_and_course_chat(learn_env, monkeypatch):
     from app import main
 

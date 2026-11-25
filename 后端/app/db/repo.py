@@ -40,10 +40,12 @@ def index_video(video_id: str, segments: List[dict], duration: float = 0):
                                   end_sec=float(seg["end_time"]), text=seg["text"]))
 
 
-def get_transcript(video_id: str) -> List[dict]:
+def get_transcript(video_id: str, *, course_id: Optional[str] = None) -> List[dict]:
     with get_session() as s:
-        rows = s.scalars(select(TranscriptChunk).where(TranscriptChunk.video_id == video_id)
-                         .order_by(TranscriptChunk.idx)).all()
+        query = select(TranscriptChunk).where(TranscriptChunk.video_id == video_id)
+        if course_id is not None:
+            query = query.join(Video, Video.id == TranscriptChunk.video_id).where(Video.course_id == course_id)
+        rows = s.scalars(query.order_by(TranscriptChunk.idx)).all()
         return [{"start_time": r.start_sec, "end_time": r.end_sec, "text": r.text} for r in rows]
 
 
