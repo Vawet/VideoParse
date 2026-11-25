@@ -1,6 +1,8 @@
 package org.videoparse;
 
 import com.fasterxml.jackson.databind.*;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.data.segment.TextSegment;
 import java.io.IOException;
@@ -29,6 +31,9 @@ class VectorIndex {
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final Semaphore indexing=new Semaphore(1);
     private final ReentrantLock schemaLock = new ReentrantLock();
+    private record DocumentQuery(String owner, String question) {}
+    private final Cache<DocumentQuery,float[]> queryEmbeddings = CacheBuilder.newBuilder()
+        .maximumSize(512).expireAfterWrite(Duration.ofMinutes(10)).build();
     private volatile long nextSchemaCheck = System.nanoTime();
     VectorIndex(ObjectMapper json,LocalEmbeddings local,DataSource db,@Value("${QDRANT_URL:}") String endpoint,@Value("${QDRANT_API_KEY:}") String key,
                 @Value("${EMBEDDING_API_KEY:}") String apiKey,@Value("${EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}") String base,
@@ -147,7 +152,14 @@ class VectorIndex {
         var conditions=new ArrayList<Object>();
         conditions.add(condition("owner",owner));
         conditions.add(Map.of("key","document","match",Map.of("any",documents)));
-        var found=require(call("POST","/points/query",Map.of("query",embed(List.of(question),true)[0],
+        // Only the embedding is independent of document scope. Always search the current permitted corpus.
+        var query = queryEmbeddings.get(new DocumentQuery(owner, question), () -> {
+            float[] vector = embed(List.of(question),true)[0];
+            if (vector.length == 0) throw new IOException("问题向量为空");
+            for (float value : vector) if (!Float.isFinite(value)) throw new IOException("问题向量无效");
+            return vector;
+        });
+        var found=require(call("POST","/points/query",Map.of("query",query,
             "filter",Map.of("must",conditions),"with_payload",true,"limit",24,"score_threshold",0.4)));
         var hits=new ArrayList<DocHit>();
         for (var point:found.path("points")) {
