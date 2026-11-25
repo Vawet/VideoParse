@@ -6,7 +6,7 @@ import sys
 from app import learning_api
 
 OPERATIONS = {name: getattr(learning_api, name) for name in (
-    "get_keywords", "chat", "demo_chat", "review_weak", "review_plan", "review_done", "teach_plan",
+    "get_keywords", "chat", "search_if_requested", "document_answer", "review_weak", "review_plan", "review_done", "teach_plan",
     "teach_plan_get", "teach_plan_revise", "quiz_generate", "quiz_get", "quiz_answer", "verify",
 )}
 

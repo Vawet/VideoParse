@@ -4,7 +4,7 @@ import logging
 from app.agent import loop, tools
 from app.agent.state import Workspace
 from app.db import repo
-from app.services import web_search
+from app.services import grounded, web_search
 from app.services import keywords as keywords_service
 from app.services import quiz as quiz_service
 from app.services import review as review_service
@@ -65,11 +65,17 @@ def chat(params, base, *, session_token=None):
                     "tools_used": [s["tool"] for s in steps]})
 
 
-def demo_chat(params, base):
+def search_if_requested(params, base):
     question = params["question"]
     if web_search.needs_web(question):
         return web_search.web_reply(question)
-    return _ok({"success": True, "source": "demo"})
+    return _ok({"success": True, "source": "local"})
+
+
+def document_answer(params, base):
+    passages = params["excerpts"]
+    claims = grounded.claims(params["question"], passages)
+    return _ok({"success": True, "claims": claims})
 
 
 def review_weak(params, base):
