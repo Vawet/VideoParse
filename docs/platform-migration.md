@@ -1,51 +1,57 @@
-# 学习工作台后端迁移
+# VideoParse 平台部署与迁移
 
-来源为本次完整换栈需求及 DOVideo-AI 的公开实现（参考版本 `6f3848d`）。现有工作台的展示、导出、示例和学习功能都保留。新模块独立实现。
+平台使用 Java 21、Spring Boot 3.5、MyBatis-Plus 和 MySQL 8 管理视频、课程、解析任务和进度。Nginx 在同一地址提供学习工作台和 Spring API。原 React 工作台保留八个标签、示例和导出；Vue 3 用于新增的证据检索和真实视频学习面板。技术对照使用 [DOVideo-AI 的固定版本](https://github.com/Xiaoc7r/DOVideo-AI/tree/6f3848dfc821902a2c2c9943befa93264eaf2850)。
 
-## 任务
-原实现使用 Flask 进程内线程和事件列表，适合本地单进程。Java 21 / Spring Boot 接收异步任务，MyBatis 和 MySQL 保存任务与可回放的 SSE 事件。数据库唯一键限制一个视频同时只有一个活动任务；每个 worker 同时只处理一个视频。媒体计算沿用 Python，实现迁移时沿用结果与时间戳契约。MySQL 会话锁随断连释放，工作区文件锁保护单个共享卷；外部模型调用在进程中断的边界可能重做。
+## 本机启动
 
-验收：相同视频并发提交得到同一活动任务，服务重启后继续查任务，SSE 用 Last-Event-ID 续读，旧页面仍能读结果。状态：已实现，整套真实模型解析未验证。部署时所有实例必须使用同一工作区与数据库。
-
-## 分片上传
-平台模式沿用原上传入口；HTTPS 或 localhost 下按 5 MiB 计算 SHA-256，失败后重选同一文件可续传，支持不超过 2 GiB 的视频。Redis 保存一次性验证令牌；MySQL 保存分片清单；MinIO 保存对象，合并后才发布本地媒体工作副本。完成请求可重放，过期的未完成会话与临时对象由后台清理。旧版 Web 服务仍可独立启动。
-
-## 启动平台
-需要 Docker 和 Compose v2.22 或以上。首次运行：
+需要 Docker、BuildKit 和 Docker Compose v2.22 或以上。以下命令从仓库根目录执行。
 
 ```bash
 python3 infra/platform/configure.py
-# 在 infra/platform/.env 中设置模型 API 和自己的 UPLOAD_ANSWER
-docker compose -f infra/platform/compose.yaml up --build -d
 ```
 
-打开 http://localhost:8088 。网关为原学习工作台、Java 平台与兼容学习 API 提供同源入口。上传分片、任务和 SSE 由 Spring 提供；学习数据在本部署自己的 MySQL 库，媒体产物在 work 卷，模型缓存可跨容器重用。原本地库与文件不会自动导入。停止运行用同一 compose 文件执行 `down`；卷中保存结果和课程记录。公开部署时配置 HTTPS。使用 `start-all.sh` 可以独立运行原有本地模式。
+首次生成的 `infra/platform/.env` 包含数据库、缓存、对象存储、向量库凭据和上传口令。按需在该文件加入模型配置，再启动服务。
 
-## 消息投递
-平台配置使用 RocketMQ。新任务和待投递记录在同一 MySQL 事务中创建，Broker 确认后才删除待投递记录。重复消息会再次检查数据库任务状态。Broker 暂时不可用时记录保留，worker 定期从数据库补捞可运行任务。
+```bash
+docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml up --build -d
+```
 
-## 恢复和画面文字
-平台 worker 为同一任务复用已写盘的成功步骤；新任务使用新的进度标识。JSON 先写临时文件再原子替换，读者不会读到半截结果。已提取的关键帧经本机 Tesseract 识别，OCR 记录保留来源帧和实际截帧时间，与说话字幕分别保存。
+浏览器打开 [本机工作台](http://localhost:8088)。本地演示无需域名。默认只监听回环地址；从远程浏览器上传需用 HTTPS，分片校验依赖浏览器 Web Crypto。上传口令和匿名学习标识适用于共享工作台，多用户私有媒体需要账户和访问隔离。
 
-## 证据检索与问答
-Java 读取字幕、视觉字幕和 OCR 记录，区分来源，使用 BM25 产生词法候选。Qdrant 默认使用缓存的 BGE 本地权重计算向量；配置 EMBEDDING_API_KEY 时改用 LangChain4j 调用指定嵌入服务。检索按视频和内容版本过滤，BM25 和向量名次用 RRF 融合。无向量服务时仍然可以搜索。远程模式首次建索引和查询均会调用所选嵌入服务。
-配置 PLATFORM_AI_KEY、PLATFORM_AI_URL 与 PLATFORM_AI_MODEL 后可对搜索结果发起问答。后端只接受能在候选片段中找到的逐字引文，用原始记录的时间定位。此检查能核对出处，不能证明模型对引文的解释正确。
+首次构建会拉取基础镜像、Python 和 Maven 依赖，并从固定的上游提交编译 MinIO。停止平台用同样参数执行 `down`。MySQL、MinIO、Qdrant、媒体工作区和模型缓存使用独立持久卷。原本地模式仍可在 `后端/` 用 `python -m app.main` 启动 Flask，在 `前端/workspace/` 用 `pnpm dev` 启动工作台。
 
-## 工作台
-原有八个标签页和导出功能保持各自的入口。平台模式的真实视频在问答页增加 Vue 3 证据检索面板，可以按来源区分 OCR、语音和画面笔记，点击时间跳到原播放器。示例模式保持原行为。
+## 模型和费用
 
-## 学习数据与课程
-Flyway 创建课程、字幕、测验、答题记录和备课版本使用的 MySQL 表。Java 负责平台课程接口、登记上传的视频。真实视频首次使用复习或备课时可建一门关联课程；已有课程沿用原归属。
-旧数据可停写后备份 SQLite 与 uploads/frames/outputs/audio，向空学习库运行 `python -m app.migrate_learning /只读快照/videoparse.db`（指定目标 DATABASE_URL）。需单独把原媒体工作区复制到 work 卷；迁移工具保留原 ID、拒绝已有记录的目标库，复制失败会回滚事务。
+- **媒体和学习工具**使用原 Python 实现。Whisper、FFmpeg、CLIP 和 Tesseract 在本机运行。讲义、视觉分析和出题等使用 `DASHSCOPE_API_KEY` 或 `DEEPSEEK_API_KEY`，可用 `LLM_PROVIDER` 选提供方。
+- **Java 问答和工具修复**使用 `PLATFORM_AI_KEY`、`PLATFORM_AI_URL` 和 `PLATFORM_AI_MODEL`。没有这组配置时仍可检索证据和运行规则编排。
+- **向量检索**默认用缓存中的 `EMBED_MODEL`（默认 BAAI/bge-small-zh-v1.5）。可在启动后运行下列命令下载到模型卷；检索请求只读取缓存。配置 `EMBEDDING_API_KEY`、`EMBEDDING_BASE_URL` 和 `PLATFORM_EMBED_MODEL` 会改用远程嵌入。远程模式下建立索引和每次查询都会调用供应商。模型或 Qdrant 不可用时继续返回 BM25 结果。
 
-平台模式也将真实上传的测验、复习和讲授三个标签接入后端，原示例仍可操作。真实作答后显示已核对的原话和时间；复习按本人作答记录排程；备课可按指令另存版本。调用出题与备课模型由用户按钮触发。
+```bash
+docker compose --env-file infra/platform/.env -f infra/platform/compose.yaml exec platform \
+  python -c 'import os; from huggingface_hub import snapshot_download; snapshot_download(os.environ["EMBED_MODEL"])'
+```
 
-## 默认解析编排
-平台默认由 Java 选择语音/无声分支，调度 ASR、关键帧、OCR、讲义和脑图工具并校验结果。若配置 LangChain4j 文本模型，最多两次从白名单选择工具修复。单任务复用同一个本地 Python 媒体工具进程，以保留 Whisper、CLIP、视觉分析及已有结果契约。PARSE_ENGINE=python 可切回原解析循环；任务与事件仍由平台持久化。
+## 从上传到学习
 
-## 统一入口
-平台启动后所有 HTTP 请求由 Spring 提供，网关统一转发 /api/，容器内不启动 Flask。播放资源支持 HTTP Range。对计算依赖较重的学习操作，Spring 使用最大并发可配置的长驻 Python 工具进程（STUDY_WORKERS），与原本地 Flask 模式共用同一组业务函数。这样两个入口的判分、证据核验与课时分配规则一致。
+1. 浏览器按 5 MiB 分片并计算 SHA-256。Redis 管一次性上传凭据，MySQL 记清单，MinIO 存分片和合并对象。中断后重选同一文件可续传；大小上限为 2 GiB。
+2. Spring 在同一事务创建任务和待发送消息，RocketMQ 分发任务。MySQL 唯一键保证同一视频至多有一个活动任务，重复消息检查任务状态。消息服务短时不可用时，worker 从数据库补捞。
+3. Java 根据是否有语音编排工具，通过私有 Python 进程执行媒体计算。关键帧、转写和分析产物落在共享工作卷。每轮执行最多选择两个不同的工具修复校验问题；模型通过 LangChain4j Tool Calling 提议动作，Java 控制参数并重新校验。重启时可复用同一任务已完成的步骤。中断发生在外部调用和写入检查点之间时，该调用可能重做。`PARSE_ENGINE=python` 可切回原解析循环。
+4. 任务事件存入 MySQL。浏览器通过 SSE 接收进度、按 `Last-Event-ID` 续读。“最近解析”按视频保存本浏览器最近 15 项，重开会回放进度并打开该视频当前结果。
+5. 单视频问答检索语音、无声视频的画面笔记和带时间的 OCR，按视频与内容版本过滤 Qdrant，再用 RRF 合并向量与 BM25 排名。证据面板核对逐字引文，用原片段的时间跳转。对话里的画面引用须命中对应画面证据。真实视频还可出题、判分、生成复习计划和修订教案。
 
-在平台模式下，原问答页的 search_transcript 工具也查询同一证据接口。画面引用用 [画面 mm:ss] 且只按 OCR 实际截帧秒数校验；该时刻恰好有人说话不会使不存在的画面引用通过。
+## 迁移已有学习数据
 
-浏览器保留最近 15 个任务的 ID、文件名和视频 ID。刷新后从“最近解析”重开，仅回放已存在的 SSE 和结果，不触发新分析。真实视频的进度时间线显示当前事件里的段数、帧数或完成状态；内置演示保留原展示。
+先停止旧环境的写入，备份 SQLite 和媒体目录。目标 MySQL 应已运行 Flyway 并且学习表为空。设置指向目标库的 `DATABASE_URL` 后，从 `后端/` 运行下列命令。
+
+```bash
+python -m app.migrate_learning /只读快照/videoparse.db
+```
+
+工具只读打开 SQLite，保留课程、视频、题目和作答等记录的原 ID，在同一事务内导入。需另行把原 `uploads/`、`frames/`、`audio/` 和 `outputs/` 复制到平台工作卷对应目录。代码回退可继续使用原快照，切换后新增的记录需要单独迁回。
+
+## 验证与边界
+
+- **任务和界面。** 独立环境使用真实 MySQL、Redis、MinIO、RocketMQ 和 Qdrant。8 个并发提交只创建一个活动任务。解析一段 8 秒无声 MP4 期间强制结束 JVM，重启后同一任务复用了阶段检查点。浏览器验证上传、进度、证据检索、答题判分、打开复习和讲授，以及刷新重开；示例八个标签与 PDF/PNG 导出菜单均可访问。FFmpeg 和存储使用真实实现，讲义与问答使用本地模型替身。
+- **字幕检索。** 同一视频的 5 道字面题，Java BM25 和平台混合检索的 Hit@1 均为 5/5。另 7 道换说法题，Java BM25 的 Hit@1、Hit@3 为 4/7、5/7；接入真实本地 BGE 和 Qdrant 后为 5/7、6/7。原 Python 混合检索为 6/7、6/7。题集只覆盖一个短视频，不能据此推断长视频 OCR 或最终答案的准确率。
+- **复测入口。** 对已结束任务运行 `python3 platform/checks/replay.py http://localhost:8088/api 任务ID`，可核查事件流 MIME 类型、递增事件 ID 和续读。在独立测试工作区将 `后端/app/tests/eval/golden.json` 放到 `outputs/eval-video_work/transcript.json`，从 `后端/` 运行 `python -m app.tests.eval.retrieval_eval --platform-api http://localhost:8088/api`，可测 Spring 实际检索结果。
+- **部署边界。** 已检查 Compose 八个服务配置，正常打包 Java 和前端。整套容器构建在拉取 Docker Hub 基础镜像时网络超时，尚未验证全容器冷启动。商业模型效果、生产并发和最低服务器内存也未实测。

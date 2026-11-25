@@ -1,6 +1,6 @@
 # Video_Parse
 
-新平台部署与迁移进度见 [Spring 平台运行说明](docs/platform-migration.md)。原学习工作台保留。
+Spring 平台支持分片续传、任务断点恢复、字幕与 OCR 证据检索，以及真实视频的测验、复习与备课。原工作台的八个标签和导出入口继续可用。[平台启动、模型配置与实测结果](docs/platform-migration.md)
 
 ## 2025腾讯犀牛鸟开源人才培养计划—视频生成图文混排讲义工具
 
