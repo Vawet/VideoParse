@@ -49,14 +49,19 @@ class UploadService {
     @Transactional(rollbackFor=Exception.class)
     public void put(UUID id,int index,byte[] data) throws Exception {
         var u=get(id,true);
-        if(u.complete()) return;
         var hashes=json.readTree(u.hashes());
         if(index<0 || index>=hashes.size() || data.length!=Math.min(CHUNK,u.bytes()-(long)index*CHUNK) ||
            !HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data)).equals(hashes.get(index).asText()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"分片大小或摘要不符");
-        store.put(u.id(),index,data);
+        if(u.complete()) return;
+        // The upload row lock serializes receipts with finish and expiry across instances.
+        var receipt=db.sql("SELECT part_no FROM vp_part WHERE upload_id=? AND part_no=? FOR UPDATE")
+                .params(u.id(),index).query(Integer.class).optional();
+        if(receipt.isEmpty()) {
+            store.put(u.id(),index,data);
+            db.sql("INSERT INTO vp_part(upload_id,part_no) VALUES(?,?)").params(u.id(),index).update();
+        }
         db.sql("UPDATE vp_upload SET updated_at=CURRENT_TIMESTAMP WHERE id=?").param(u.id()).update();
-        db.sql("INSERT INTO vp_part(upload_id,part_no) VALUES(?,?) ON DUPLICATE KEY UPDATE part_no=part_no").params(u.id(),index).update();
     }
     @Transactional(rollbackFor=Exception.class)
     public Map<String,Object> finish(UUID id) throws Exception {

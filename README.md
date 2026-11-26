@@ -80,8 +80,10 @@ console.log(await response.text());
 ## 架构
 
 - **工作台**使用 React 和 TypeScript。视频解析任务通过 SSE 推送进度，资料对话在回答旁打开对应的播放器或原文阅读器。[前端源码](前端/workspace/src)
-- **平台服务**使用 Java 21 和 Spring Boot 3.5，负责账号、上传、任务编排和引用校验。MySQL 记录任务与学习进度，RocketMQ 通知后台执行。MinIO 保存上传对象，工作卷保存媒体处理产物，Neo4j 保存已发布的解析快照。[平台源码](platform/src/main/java/org/videoparse) · [发布与恢复机制](docs/platform-migration.md#消息队列与图发布恢复)
+- **平台服务**使用 Java 21 和 Spring Boot 3.5，负责账号、上传、任务编排和引用校验。MySQL 记录任务与学习进度，RocketMQ 通知后台执行。Redis 负责限流与一次性上传凭据，复用查询向量，并在任务事件提交后唤醒 SSE 订阅者。MinIO 保存上传对象，工作卷保存媒体处理产物，Neo4j 保存已发布的解析快照。[平台源码](platform/src/main/java/org/videoparse) · [发布与恢复机制](docs/platform-migration.md#消息队列与图发布恢复) · [并发容量与实测](docs/platform-migration.md#并发容量与实测)
 - **媒体与学习工具**由 Python 执行，复用 FFmpeg、Whisper、OCR 和模型服务。文档按标题与原文行切段，支持全文和可选的 Qdrant 向量检索。跨资料库查视频时，使用带时间位置的中文全文索引，再将结果与文档候选一起排序。[Python 工具](后端/app) · [检索与存储设计](docs/retrieval-storage-decision.md)
+
+两台平台实例同时收到 12 份相同的 5 MiB 分片时，上传回执让 MinIO 的逻辑写入量从 60 MiB 降到 5 MiB。复现实验同时覆盖回执丢失、错误摘要和跨账号重传。[并发实验与面试追问](docs/concurrency-interview.md)
 
 ## 参与贡献
 
