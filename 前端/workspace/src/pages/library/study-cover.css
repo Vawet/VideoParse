@@ -38,7 +38,14 @@
 .study-cover[data-subject="library"] h1, .study-cover[data-compact="true"] h1 { font-size: clamp(23px, 3cqw, 38px); }
 .study-cover[data-compact="true"] { min-height: 112px; padding-block: 20px; }
 @media (prefers-reduced-motion: no-preference) {
-  .study-cover canvas { transition: transform .45s ease-out; }
+  .study-cover canvas {
+    animation: study-cover-arrive 1.8s var(--ease-out, cubic-bezier(.2,.75,.25,1));
+    transition: transform .45s ease-out;
+  }
+  @keyframes study-cover-arrive {
+    from { translate: 8% 5%; rotate: 9deg; scale: .9; opacity: .15; }
+    to { translate: 0 0; rotate: 0deg; scale: 1; opacity: 1; }
+  }
   @media (hover: hover) { .study-cover:hover canvas { transform: translateY(-2px) rotate(-1deg); } }
 }
 @container (max-width: 560px) {
