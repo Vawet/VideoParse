@@ -17,6 +17,7 @@ type Exercise = {
 };
 type Reply = {exercise?: Exercise};
 type Action = "next" | "answer";
+const ANSWER_LIMIT = 6000;
 const stages = [
   {label: "选择材料", icon: Layers},
   {label: "独立作答", icon: PencilLine},
@@ -49,6 +50,7 @@ function Practice({doc, selectDoc}: {doc: string; selectDoc: (id: string) => voi
   const empty = library.isSuccess && documents.length === 0;
   const [exercise, setExercise] = useState<Exercise>();
   const [draft, setDraft] = useState("");
+  const [revisedAnswer, setRevisedAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState<Action | "load" | null>("load");
   const [error, setError] = useState("");
   const focusAfterSubmit = useRef<string | null>(null);
@@ -68,24 +70,31 @@ function Practice({doc, selectDoc}: {doc: string; selectDoc: (id: string) => voi
     }
   }, [exercise]);
 
+  const feedback = exercise?.feedback;
+  const supplement = !!feedback && revisedAnswer === null;
+  // The server joins the saved answer and supplement with one newline before grading.
+  const limit = supplement ? Math.max(0, ANSWER_LIMIT - (exercise?.answer ?? "").length - 1) : ANSWER_LIMIT;
+  const response = revisedAnswer ?? draft;
+  const canGrade = !!response.trim() && response.length <= limit && (revisedAnswer === null || response !== exercise?.answer);
+
   async function submit(action: Action) {
-    if (busy || (action === "answer" && (!exercise || !draft.trim()))) return;
+    if (busy || (action === "answer" && (!exercise || !canGrade))) return;
     setBusy(action);
     setError("");
     try {
       const next = action === "next";
       const path = next ? "/interview/next" : "/interview/" + exercise!.id + "/answer";
       const body = next ? {documentId: doc || null, previousId: exercise?.id} :
-        {revision: exercise!.revision, answer: draft, supplement: !!exercise?.feedback};
+        {revision: exercise!.revision, answer: response, supplement};
       const result = await api<Reply>(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
       focusAfterSubmit.current = next ? "interview-question" : "interview-score";
       setExercise(result.exercise);
       setDraft("");
+      setRevisedAnswer(null);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(null); }
   }
 
-  const feedback = exercise?.feedback;
   const stage = feedback ? 2 : exercise ? 1 : 0;
   const needsAnswer = !feedback || feedback.score < feedback.marks.length;
   function grade(event: FormEvent) {
@@ -101,10 +110,15 @@ function Practice({doc, selectDoc}: {doc: string; selectDoc: (id: string) => voi
   const controls = <>
     {needsAnswer && <form onSubmit={grade} className="interview-response">
       <label htmlFor="interview-answer"><MessageCircle size={16}/>{feedback?.followup || "你的回答"}</label>
-      <Textarea id="interview-answer" maxLength={6000} rows={5} value={draft} disabled={!!busy}
-        placeholder={feedback ? "补充上一轮遗漏的要点…" : "先不看笔记，用自己的话回答…"} onChange={e => setDraft(e.target.value)}/>
-      <div className="interview-submit"><small>{draft.length} / 6000</small>
-        <Button type="submit" disabled={!!busy || !draft.trim()}>{feedback ? "提交补答" : "提交回答"}<ArrowRight/></Button></div>
+      {feedback && <Button type="button" variant="link" size="sm" className="mb-2 h-auto p-0" disabled={!!busy}
+        onClick={() => setRevisedAnswer(supplement ? [exercise?.answer, draft].filter(Boolean).join("\n") : null)}>
+        {supplement ? "修改完整回答" : "返回补答"}</Button>}
+      <Textarea id="interview-answer" aria-describedby="interview-length" maxLength={limit} rows={5}
+        value={response} disabled={!!busy || limit === 0}
+        placeholder={limit === 0 ? "已达合计上限，可修改完整回答后重新评分。" : supplement ? "补充上一轮遗漏的要点…" : "先不看笔记，用自己的话回答…"}
+        onChange={e => revisedAnswer === null ? setDraft(e.target.value) : setRevisedAnswer(e.target.value)}/>
+      <div className="interview-submit"><small id="interview-length">{supplement ? "本次补答 " : ""}{response.length} / {limit}</small>
+        <Button type="submit" disabled={!!busy || !canGrade}>{revisedAnswer !== null ? "重新评分" : supplement ? "提交补答" : "提交回答"}<ArrowRight/></Button></div>
     </form>}
     <div className="interview-next"><Button variant={needsAnswer ? "outline" : "default"} disabled={!!busy}
       onClick={() => void submit("next")}>下一题<ArrowRight/></Button></div>
