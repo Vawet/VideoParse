@@ -11,6 +11,8 @@ import os
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+from app import api_usage
 from datetime import timedelta
 
 from app.agent.state import Workspace
@@ -58,7 +60,8 @@ def run_tool(name, ws: Workspace, args: dict, group: str, max_chars=3000):
     if missing:
         return {"error": f"缺少必填参数: {missing}"}
     try:
-        result = spec["fn"](ws, **args)
+        with api_usage.scope(name):
+            result = spec["fn"](ws, **args)
     except TypeError as e:
         result = {"error": f"参数错误: {e}"}
     except Exception as e:  # noqa: BLE001
@@ -289,7 +292,8 @@ def write_frame_notes(ws, max_frames=30):
         }
 
     with ThreadPoolExecutor(max_workers=3) as ex:
-        segments = list(ex.map(work, zip(files, starts, ends)))
+        futures = [ex.submit(copy_context().run, work, item) for item in zip(files, starts, ends)]
+        segments = [future.result() for future in futures]
     ws.save("segments", segments)
     failed = sum(1 for s in segments if s["failed"])
     return {"frames_processed": len(segments), "failed": failed}

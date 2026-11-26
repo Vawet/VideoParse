@@ -53,18 +53,6 @@ class DocumentAskController {
     }
 
     static List<Claim> verify(com.fasterxml.jackson.databind.JsonNode items, List<DocumentSearch.Passage> hits) {
-        var excerpts = hits.stream().map(DocumentSearch.Passage::body).toList();
-        var verified = new ArrayList<Claim>();
-        for (var claim : CitedClaim.verify(items,
-                id -> id >= 1 && id <= excerpts.size() ? excerpts.get(id - 1) : null, 4)) {
-            var hit = hits.get(claim.id() - 1);
-            int first = hit.firstLine() + newlines(hit.body().substring(0, claim.offset()));
-            verified.add(new Claim(claim.id(), claim.answer(), claim.quote(), first, first + newlines(claim.quote())));
-        }
-        return verified;
-    }
-
-    private static int newlines(String text) {
-        return (int) text.chars().filter(c -> c == '\n').count();
+        return LibrarySearch.verify(items,hits.stream().map(LibrarySearch.Hit::document).toList());
     }
 }

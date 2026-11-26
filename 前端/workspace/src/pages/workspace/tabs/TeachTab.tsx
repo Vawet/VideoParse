@@ -44,11 +44,10 @@ export function TeachTab() {
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="rounded-xl border border-border/70 bg-card/40 p-4">
         <div className="flex items-center gap-3">
-          <span className="label-mono text-[9px]">01 · Teach back</span>
+          <span className="tool-heading">讲授练习</span>
           <span className="h-px flex-1 bg-border/60" aria-hidden />
           <GraduationCap className="h-3.5 w-3.5 text-gold/70" aria-hidden />
         </div>
-        <h2 className="mt-2.5 text-[13px] text-foreground">讲一遍,才算真的懂</h2>
         <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
           选一个知识点,用你自己的话讲清楚它是什么、为什么需要、怎么工作。AI 会对照这段视频的知识库,告诉你哪些要点讲到了、哪些被跳过。
         </p>

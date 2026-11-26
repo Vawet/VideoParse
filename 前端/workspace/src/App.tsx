@@ -1,4 +1,5 @@
 import { AccountBoundary } from "./pages/library/AccountBoundary";
+import { ApiUsageBar } from "./components/ApiUsageBar";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,15 +20,19 @@ const router = createBrowserRouter([
 ]);
 
 const App = () => {
+  const workspace = (
+    <div className="flex h-dvh min-h-0 flex-col">
+      <div className="min-h-0 flex-1"><RouterProvider router={router} /></div>
+      <ApiUsageBar />
+    </div>
+  );
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          {import.meta.env.VITE_PLATFORM === "true"
-            ? <AccountBoundary><RouterProvider router={router}/></AccountBoundary>
-            : <RouterProvider router={router}/>}
+          {import.meta.env.VITE_PLATFORM === "true" ? <AccountBoundary>{workspace}</AccountBoundary> : workspace}
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

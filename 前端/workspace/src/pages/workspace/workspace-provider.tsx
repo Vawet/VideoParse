@@ -11,6 +11,7 @@ import {
   getUploadGate,
   startAnalyze,
   subscribeTask,
+  controlAnalysis,
   uploadVideo,
   verifyUploadGate,
   type RawResult, type ArchivedVideo,
@@ -70,12 +71,13 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
   const focusToken = useRef(0);
   const chatTimer = useRef<number | null>(null);
   const chatBusyRef = useRef(false);
-  const lastRunMode = useRef<"demo" | "upload" | "fail">("demo");
   const abortRef = useRef<AbortController | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const sessionRef = useRef<{ videoId: string; filepath: string; name: string } | null>(
     archive?.filepath ? {videoId: archive.video.id, filepath: archive.filepath, name: archive.video.name} : null
   );
+  const [liveTaskId, setLiveTaskId] = useState<string | null>(null);
+  const [controlPending, setControlPending] = useState(false);
   const liveStepRef = useRef<ParseStepId>("audio");
   const liveErrorRef = useRef<string | null>(null);
   const conversationRef = useRef<string | undefined>(undefined);
@@ -179,7 +181,6 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
 
   const beginRun = useCallback(
     (mode: "demo" | "upload" | "fail") => {
-      lastRunMode.current = mode;
       resetRunOutputs();
       setActiveTab("overview");
       setLightbox({ open: false, index: 0 });
@@ -195,6 +196,8 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
     sessionRef.current = null;
+    setLiveTaskId(null);
+    setControlPending(false);
     setRawResult(null);
     setVideoId(null);
     setSource("demo");
@@ -238,6 +241,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
     const session = sessionRef.current;
     if (!session) return;
     unsubscribeRef.current?.();
+    setLiveTaskId(null);
     liveStepRef.current = "audio";
     liveErrorRef.current = null;
     setStageDetail({});
@@ -250,10 +254,13 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
     try {
       const taskId = existingTask ?? (await startAnalyze(session.filepath, session.videoId)).task_id;
       if (sessionRef.current !== session) return;
+      setLiveTaskId(taskId);
       if (import.meta.env.VITE_PLATFORM === "true") setRecent(rememberTask({ ...session, taskId }));
       unsubscribeRef.current = subscribeTask(taskId, (event) => {
         if (sessionRef.current !== session) return;
-        if (event.type === "tool_start") {
+        if (event.type === "task_state") {
+          run.setLiveState(event.status === "queued" ? "running" : event.status);
+        } else if (event.type === "tool_start") {
           liveStepRef.current = TOOL_STEP[event.tool] ?? liveStepRef.current;
         } else if (event.type === "tool_end") {
           const step = TOOL_STEP[event.tool];
@@ -266,6 +273,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
             run.markLive(step === "verify" ? "notes" : step);
           }
         } else if (event.type === "progress" && event.stage === "publishing") {
+          setLiveTaskId(null);
           liveStepRef.current = "verify";
           run.markLive("notes");
           const detail = event.retry_in_seconds ? `${event.text}（${event.retry_in_seconds} 秒）` : event.text;
@@ -273,6 +281,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
         } else if (event.type === "error") {
           liveErrorRef.current = event.text;
         } else if (event.type === "end") {
+          setLiveTaskId(null);
           if (event.status !== "done") {
             run.failLive(liveStepRef.current, event.error || liveErrorRef.current || "解析失败");
             return;
@@ -326,7 +335,6 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
         sessionRef.current = { videoId: uploaded.video_id, filepath: uploaded.filepath, name: file.name };
         setVideoId(uploaded.video_id);
         setSource("live");
-        lastRunMode.current = "upload";
         await runLive();
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -358,7 +366,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
       void runLive();
       return;
     }
-    run.start(lastRunMode.current, { reset: false });
+    run.start("demo", { reset: false });
     setStatus("parsing");
   }, [run, runLive, source]);
 
@@ -542,8 +550,33 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
   const activeStep: ParseStep | null =
     PARSE_STEPS.find((step) => step.id === run.activeStepId) ?? null;
 
+  const viewStatus = status === "parsing" && (run.status === "pausing" || run.status === "paused")
+    ? run.status : status;
+
+  async function toggleParsePause() {
+    if (controlPending || (viewStatus !== "parsing" && viewStatus !== "paused")) return;
+    if (source === "demo") {
+      run.toggleDemoPause();
+      return;
+    }
+    const session = sessionRef.current;
+    if (!liveTaskId || !session) return;
+    setControlPending(true);
+    try {
+      // SSE is ordered across clients, including if another tab resumes this task.
+      await controlAnalysis(liveTaskId, viewStatus === "paused" ? "resume" : "pause");
+    } catch (error) {
+      if (sessionRef.current === session) toast.error(errorMessage(error));
+    } finally {
+      if (sessionRef.current === session) setControlPending(false);
+    }
+  }
+
   const workspaceValue = {
-    status,
+    status: viewStatus,
+    canControlParse: source === "demo" || Boolean(liveTaskId),
+    controlPending,
+    toggleParsePause,
     title,
     lecture,
     duration,
@@ -554,7 +587,7 @@ export function WorkspaceProvider({ children, archive }: { children: React.React
     activeStep,
     failure: run.failure,
     available,
-    unlockingKeys: activeStep ? REVEALED_BY_STEP[activeStep.id] : [],
+    unlockingKeys: activeStep && viewStatus !== "paused" ? REVEALED_BY_STEP[activeStep.id] : [],
     uploadProgress,
     fileMeta,
     showDemoNotice:

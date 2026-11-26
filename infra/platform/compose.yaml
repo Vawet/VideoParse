@@ -94,6 +94,7 @@ services:
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
       PLATFORM_EMBED_MODEL: ${PLATFORM_EMBED_MODEL:-BAAI/bge-m3}
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
+      BRAVE_USD_PER_REQUEST: ${BRAVE_USD_PER_REQUEST:-0.005}
       PLATFORM_AI_KEY: ${PLATFORM_AI_KEY:-}
       PLATFORM_AI_URL: ${PLATFORM_AI_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       PLATFORM_AI_MODEL: ${PLATFORM_AI_MODEL:-qwen-plus}

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, Circle, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Circle, Loader2, Pause } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ export function AgentTimeline({ open, onOpenChange }: AgentTimelineProps) {
                   state === "done"
                     ? step.doneDetail
                     : state === "active"
-                      ? step.detail
+                      ? status === "paused" ? "已暂停，等待继续解析" : step.detail
                       : state === "failed"
                         ? "这一步中断了,结果保留在上一步。"
                         : "等待前一步完成";
@@ -61,7 +61,7 @@ export function AgentTimeline({ open, onOpenChange }: AgentTimelineProps) {
                       {state === "done" ? (
                         <CheckCircle2 className="h-3.5 w-3.5 text-primary" aria-hidden />
                       ) : state === "active" ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-gold" aria-hidden />
+                        status === "paused" ? <Pause size={14} aria-hidden/> : <Loader2 className="h-3.5 w-3.5 animate-spin text-gold" aria-hidden />
                       ) : state === "failed" ? (
                         <AlertTriangle className="h-3.5 w-3.5 text-destructive" aria-hidden />
                       ) : (

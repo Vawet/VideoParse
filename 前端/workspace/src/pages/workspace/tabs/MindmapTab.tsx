@@ -76,9 +76,7 @@ export function MindmapTab() {
   return (
     <div className="mx-auto max-w-4xl space-y-3">
       <div className="flex flex-wrap items-center gap-2.5">
-        <span className="label-mono text-[9px]">01 · Mind map</span>
-        <span className="h-px w-6 bg-border" aria-hidden />
-        <h2 className="text-[13px] text-foreground">课程结构图</h2>
+        <h2 className="tool-heading">课程结构图</h2>
         <span className="text-[11px] text-muted-foreground">
           {lecture.segments.length} 个章节 · 点击节点联动视频
         </span>

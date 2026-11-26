@@ -24,7 +24,7 @@ export function NotesTab() {
   useEffect(() => {
     if (!focusRequest) return;
     const target = containerRef.current?.querySelector(`#seg-${focusRequest.segmentId}`);
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
   }, [focusRequest]);
 
   const activeSegment = lecture.segments[activeSegmentIndex];
@@ -32,7 +32,7 @@ export function NotesTab() {
   return (
     <div ref={containerRef} className="mx-auto max-w-3xl space-y-4">
       <div className="no-print flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/70 bg-card/40 px-3.5 py-2.5">
-        <span className="label-mono text-[9px]">01 · Notes</span>
+        <span className="tool-heading">课程讲义</span>
         <span className="hidden h-px w-6 bg-border sm:block" aria-hidden />
         <span className="text-[11px] text-muted-foreground">
           当前

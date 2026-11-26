@@ -13,11 +13,11 @@ export function OverviewTab() {
   const { lecture, setActiveTab, jumpToSegment } = useWorkspace();
 
   const stats = [
-    { label: "Duration", value: formatTime(lecture.duration), unit: "" },
-    { label: "Chapters", value: String(lecture.segments.length), unit: "段" },
-    { label: "Words", value: String(lecture.stats.words), unit: "字" },
+    { label: "时长", value: formatTime(lecture.duration), unit: "" },
+    { label: "章节", value: String(lecture.segments.length), unit: "段" },
+    { label: "讲义字数", value: String(lecture.stats.words), unit: "字" },
     {
-      label: "Key frames",
+      label: "关键帧",
       value: String(lecture.stats.framesKept),
       unit: `/ ${lecture.stats.framesTotal}`,
     },
@@ -27,7 +27,7 @@ export function OverviewTab() {
     <div className="mx-auto max-w-4xl space-y-8">
       <section>
         <div className="flex items-center gap-3">
-          <span className="label-mono text-[9px]">01 · Overview</span>
+          <span className="tool-heading">课程概览</span>
           <span className="h-px flex-1 bg-border/60" aria-hidden />
           <span className="label-mono text-[9px]">{lecture.subtitle}</span>
         </div>
@@ -35,9 +35,6 @@ export function OverviewTab() {
         <h1 className="display mt-4 text-[1.85rem] leading-[1.2] text-foreground md:text-[2.3rem]">
           {lecture.title}
         </h1>
-        <p className="display-italic mt-1.5 text-[15px] text-gold/85">
-          from watch → recall
-        </p>
         <p className="mt-4 max-w-2xl text-[13px] leading-[1.9] text-muted-foreground md:text-sm">
           {lecture.overview.summary}
         </p>
@@ -61,9 +58,9 @@ export function OverviewTab() {
 
       <section className="space-y-3">
         <div className="flex items-center gap-3">
-          <span className="label-mono text-[9px]">02 · Key points</span>
+          <span className="tool-heading">学习要点</span>
           <span className="h-px flex-1 bg-border/60" aria-hidden />
-          <span className="label-mono text-[9px]">记住这 {lecture.overview.keyPoints.length} 条</span>
+          <span className="label-mono text-[9px]">{lecture.overview.keyPoints.length} 条</span>
         </div>
         <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/70 bg-card/40">
           {lecture.overview.keyPoints.map((point, index) => (
@@ -80,12 +77,12 @@ export function OverviewTab() {
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border/70 bg-card/40 p-4">
           <div className="flex items-center gap-3">
-            <span className="label-mono text-[9px]">03 · Start here</span>
+            <span className="tool-heading">继续学习</span>
             <span className="h-px flex-1 bg-border/60" aria-hidden />
             <ListChecks className="h-3.5 w-3.5 text-gold/70" aria-hidden />
           </div>
           <p className="mt-2.5 text-[12px] leading-relaxed text-muted-foreground">
-            建议顺序:先读讲义第 2、4 节,再做一轮测验,最后用复习队列巩固。
+            阅读课程讲义，或用测验检查对知识点的掌握。
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
@@ -110,14 +107,14 @@ export function OverviewTab() {
               onClick={() => jumpToSegment((lecture.segments[1] ?? lecture.segments[0]).id)}
               className="rounded-full px-2.5 py-1.5 font-mono text-[11px] text-gold/80 transition-colors duration-200 ease-smooth hover:text-gold"
             >
-              jump · ch.02
+              跳到章节
             </button>
           </div>
         </div>
 
         <div className="rounded-xl border border-border/70 bg-card/40 p-4">
           <div className="flex items-center gap-3">
-            <span className="label-mono text-[9px]">04 · Glossary</span>
+            <span className="tool-heading">术语表</span>
             <span className="h-px flex-1 bg-border/60" aria-hidden />
             <Quote className="h-3.5 w-3.5 text-gold/70" aria-hidden />
           </div>

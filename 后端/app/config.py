@@ -105,7 +105,8 @@ def get_client():
         key = os.getenv("LLM_API_KEY") or os.getenv(_P["key_env"])
         if not key:
             raise EnvironmentError(f"{_P['key_env']} 环境变量未配置（当前供应商: {PROVIDER}）")
-        _client = OpenAI(api_key=key, base_url=LLM_BASE_URL)
+        from app.api_usage import MeteredHttpClient
+        _client = OpenAI(api_key=key, base_url=LLM_BASE_URL, http_client=MeteredHttpClient())
     return _client
 
 

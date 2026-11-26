@@ -96,6 +96,21 @@ const postJson = <T>(path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+export interface UsageReceipt {
+  id: number; started_ms: number; operation: string; provider: string; model: string; status: string;
+  input_tokens: number | null; output_tokens: number | null; total_tokens: number | null; estimated_usd_micros: number | null;
+}
+interface UsagePage {
+  summary: { requests: number; tokens: number; estimated_usd_micros: number; unconfirmed: number };
+  items: UsageReceipt[];
+  next: number | null;
+}
+export async function readApiUsage(before: number | null, signal: AbortSignal) {
+  await openWorkspace();
+  const path = (platform ? "/v2/usage" : "/usage") + (before === null ? "" : "?before=" + before);
+  return request<UsagePage>(path, {signal, cache:"no-store"});
+}
+
 /** The upload gate: a question that must be answered before a one-time token is issued. */
 export async function getUploadGate() {
   await openWorkspace();
@@ -146,7 +161,14 @@ export async function startAnalyze(filepath: string, videoId: string) {
   });
 }
 
+export type ParseControlState = "queued" | "running" | "pausing" | "paused";
+
+export function controlAnalysis(taskId: string, action: "pause" | "resume") {
+  return postJson<{ status: ParseControlState }>(`/tasks/${encodeURIComponent(taskId)}/${action}`, {});
+}
+
 export type AgentEvent =
+  | { type: "task_state"; status: ParseControlState }
   | { type: "progress"; stage: "publishing"; text: string; retry_in_seconds?: number }
   | { type: "thought"; step: number; text: string }
   | { type: "tool_start"; step: number; tool: string; args?: unknown }
@@ -252,7 +274,7 @@ export async function fetchResult(videoId: string) {
   return data.result;
 }
 
-export type LibraryVideo = { id: string; name: string; duration: number };
+export type LibraryVideo = { id: string; name: string; duration: number; indexState?: string };
 export type LibraryDocument = { id: string; name: string; chunks: number; indexedChunks: number; indexState: string };
 export type LibraryFolder = { id: "videos" | "documents"; name: string };
 export type ArchivedVideo = { video: LibraryVideo; filepath: string; result: RawResult };

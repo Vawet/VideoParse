@@ -14,7 +14,7 @@ type SlideFigureProps = {
 export function SlideFigure({ slide, onOpen, onJump, className }: SlideFigureProps) {
   return (
     <figure className={cn("not-prose my-6", className)}>
-      <div className="frame-brackets m-1">
+      <div className="relative m-1">
         <button
           type="button"
           onClick={onOpen}

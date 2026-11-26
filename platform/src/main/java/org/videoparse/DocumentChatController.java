@@ -13,18 +13,19 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/v2/documents")
+@RequestMapping("/v2")
 class DocumentChatController {
     private static final Logger log = LoggerFactory.getLogger(DocumentChatController.class);
-    record Ask(String question, String documentId, boolean documentsOnly, String conversationId) {}
+    record LegacyAsk(String question,String documentId,boolean documentsOnly,String conversationId) {}
+    record Ask(String question,String kind,String sourceId,boolean libraryOnly,String conversationId) {}
     private final Visitor visitor;
     private final DocumentLibrary library;
-    private final DocumentSearch search;
+    private final LibrarySearch search;
     private final StudyTools tools;
     private final Conversations conversations;
     private final ObjectMapper json;
 
-    DocumentChatController(Visitor visitor, DocumentLibrary library, DocumentSearch search, StudyTools tools,
+    DocumentChatController(Visitor visitor, DocumentLibrary library, LibrarySearch search, StudyTools tools,
                            Conversations conversations, ObjectMapper json) {
         this.visitor=visitor; this.library=library; this.search=search; this.tools=tools;
         this.conversations=conversations; this.json=json;
@@ -41,14 +42,32 @@ class DocumentChatController {
         }
     }
 
-    @PostMapping(value="/chat", produces="application/x-ndjson")
+    @PostMapping(value="/documents/chat",produces="application/x-ndjson")
+    void legacy(@RequestBody LegacyAsk ask,HttpServletResponse response) throws Exception {
+        stream(new Ask(ask.question(),"document",ask.documentId(),ask.documentsOnly(),ask.conversationId()),true,response);
+    }
+
+    @PostMapping(value="/library/chat", produces="application/x-ndjson")
     void chat(@RequestBody Ask ask, HttpServletResponse response) throws Exception {
+        stream(ask,false,response);
+    }
+
+    private void stream(Ask ask,boolean legacy,HttpServletResponse response) throws Exception {
         String owner=visitor.id();
         if (ask.question()==null || ask.question().isBlank() || ask.question().length()>1000)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请输入 1 至 1000 字的问题");
-        if (ask.documentId()!=null) library.require(ask.documentId());
-        var thread=conversations.open(owner,ask.documentsOnly()?"doconly":"doc",
-            Objects.requireNonNullElse(ask.documentId(),"all"),ask.conversationId());
+        if(ask.kind()==null || !Set.of("all","video","document").contains(ask.kind()) ||
+                (ask.sourceId()!=null && (ask.sourceId().isBlank() || ask.sourceId().length()>64 || ask.kind().equals("all"))))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"无效的资料范围");
+        if(ask.sourceId()!=null) {
+            if(ask.kind().equals("document")) library.require(ask.sourceId());
+            else search.requireVideo(owner,ask.sourceId());
+        }
+        String type=legacy?"doc":"lib";
+        if(ask.libraryOnly()) type+="only";
+        String scope=legacy?Objects.requireNonNullElse(ask.sourceId(),"all"):
+            UUID.nameUUIDFromBytes((ask.kind()+"/"+Objects.toString(ask.sourceId(),"")).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        var thread=conversations.open(owner,type,scope,ask.conversationId());
         response.setContentType("application/x-ndjson;charset=UTF-8");
         response.setHeader("X-Accel-Buffering","no");
         var events=new Events(json,response.getOutputStream(),System.nanoTime());
@@ -73,14 +92,14 @@ class DocumentChatController {
 
     private void answer(Ask ask, Conversations.ThreadState thread, Events events) throws IOException,InterruptedException {
         String q=ask.question().strip();
-        boolean strict=ask.documentsOnly(), web=false;
-        events.step("scope",strict?"仅使用选定文档":"正在判断资料来源");
+        boolean strict=ask.libraryOnly(), web=false;
+        events.step("scope",strict?"仅使用选定资料":"正在判断资料来源");
         if (!strict) {
             var route=invoke("document_route",Map.of("question",q));
             web=route.path("web").asBoolean();
             strict=route.path("strict").asBoolean();
         }
-        List<DocumentSearch.Passage> hits=List.of();
+        List<LibrarySearch.Hit> hits=List.of();
         JsonNode sources=json.createArrayNode();
         List<String> excerpts=new ArrayList<>();
         if (web) {
@@ -89,19 +108,15 @@ class DocumentChatController {
             for (var source:sources) excerpts.add(source.path("snippet").asText());
             events.step("retrieve","找到 "+excerpts.size()+" 条网页摘要");
         } else {
-            events.step("retrieve",ask.documentId()==null?"正在检索我的全部文档":"正在检索当前文档");
+            events.step("retrieve",ask.sourceId()==null?"正在检索所选范围的资料":"正在检索当前资料");
             var history=thread.history();
             String query=q;
             if (history.size()>=2 && q.matches("(?is).*(这个|那个|它|刚才|上面|上述|上一|详细点|再举|举个例|继续|展开|再解释|举例|第二点|第一点|elaborate|example|explain that).*"))
                 query=history.get(history.size()-2).path("content").asText()+"\n"+q;
-            var result=search.search(thread.owner(),ask.documentId(),query);
+            var result=search.search(thread.owner(),ask.kind(),ask.sourceId(),query,thread.type().startsWith("lib"));
             hits=result.hits();
             events.step("retrieve",(result.usedVectors()?"全文与向量检索":"全文检索")+" · "+hits.size()+" 个段落");
-            if (hits.isEmpty() && ask.documentId()!=null) {
-                hits=search.opening(thread.owner(),ask.documentId());
-                events.step("retrieve","补充读取文档开头 "+hits.size()+" 个段落");
-            }
-            excerpts=hits.stream().map(DocumentSearch.Passage::body).toList();
+            excerpts=hits.stream().map(LibrarySearch.Hit::body).toList();
         }
 
         boolean supplement=!strict && !web;
@@ -110,7 +125,7 @@ class DocumentChatController {
             events.step("generate","正在请求回答生成服务");
             try {
                 var output=invoke("document_answer",Map.of("question",q,"history",thread.history(),
-                        "excerpts",excerpts,"allow_explanation",supplement));
+                        "excerpts",excerpts,"source_labels",hits.stream().map(LibrarySearch.Hit::label).toList(),"allow_explanation",supplement));
                 for (String field:List.of("claims","explanation","model","model_status"))
                     if (output.has(field)) model.set(field,output.get(field));
             } catch (ResponseStatusException e) { model.put("model_status","unavailable"); }
@@ -125,7 +140,7 @@ class DocumentChatController {
             default -> "模型服务暂不可用";
         });
 
-        var claims=DocumentAskController.verify(model.path("claims"),hits);
+        var claims=LibrarySearch.verify(model.path("claims"),hits);
         var lines=new ArrayList<String>();
         for (var c:claims) lines.add(c.answer()+" ["+c.id()+"]");
         if (web) {
@@ -141,7 +156,7 @@ class DocumentChatController {
         if (!"completed".equals(status) && !"skipped".equals(status))
             answer=("unconfigured".equals(status)?"尚未配置文本模型 API。":"模型暂未生成可用回答。")+answer;
         conversations.append(thread,q,(answer+"\n"+explanation).strip());
-        events.emit("answer",Map.of("source",web?"web":"document","answer",answer,"explanation",explanation,
+        events.emit("answer",Map.of("source",web?"web":thread.type().startsWith("doc")?"document":"library","answer",answer,"explanation",explanation,
                 "claims",claims,"web_sources",sources,"hits",hits,"conversation_id",thread.id()));
     }
 }

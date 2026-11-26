@@ -15,7 +15,10 @@ public interface JobMapper {
 
     @Insert("INSERT INTO vp_job(id,video_id,active_video,status) VALUES(#{id},#{video},#{video},'queued') ON DUPLICATE KEY UPDATE id=id")
     void submit(String id, String video);
-    @Insert("INSERT INTO vp_dispatch(job_id,stage,attempt) VALUES(#{id},#{stage},#{attempt}) ON DUPLICATE KEY UPDATE attempt=#{attempt}")
+    @Insert("""
+        INSERT INTO vp_dispatch(job_id,stage,attempt) VALUES(#{id},#{stage},#{attempt})
+        ON DUPLICATE KEY UPDATE attempt=#{attempt},send_lease=NULL,send_failures=0,available_at=CURRENT_TIMESTAMP(3)
+        """)
     void enqueue(String id,String stage,int attempt);
     @Delete("DELETE FROM vp_dispatch WHERE job_id=#{id}")
     void clearDispatch(String id);
@@ -23,9 +26,15 @@ public interface JobMapper {
     String active(String video);
     @Select("SELECT id,video_id,status,error FROM vp_job WHERE id=#{id}")
     Job get(String id);
+    @Select("SELECT owner_id FROM videos WHERE id=#{video}")
+    String videoOwner(String video);
     String OWNED_JOB = " FROM vp_job j JOIN videos v ON v.id=j.video_id WHERE j.id=#{id} AND v.owner_id=#{owner}";
     @Select("SELECT j.id,j.video_id,j.status,j.error" + OWNED_JOB)
     Job ownedJob(String id, String owner);
+    @Select("SELECT j.status" + OWNED_JOB + " FOR UPDATE")
+    String lockOwnedState(String id, String owner);
+    @Update("UPDATE vp_job SET status=#{next} WHERE id=#{id} AND status=#{expected}")
+    int transition(String id, String expected, String next);
     @Select("SELECT j.video_id,j.status,j.error,(SELECT COUNT(*) FROM vp_event e WHERE e.job_id=j.id) AS events" + OWNED_JOB)
     Status ownedStatus(String id, String owner);
     String LOCK_PREFIX = "videoparse:";
@@ -35,6 +44,7 @@ public interface JobMapper {
     @Select("SELECT id FROM (" +
         "(SELECT id,created_at FROM vp_job WHERE status='queued'" + OLDEST_FREE + ")" +
         " UNION ALL (SELECT id,created_at FROM vp_job WHERE status='running'" + OLDEST_FREE + ")" +
+        " UNION ALL (SELECT id,created_at FROM vp_job WHERE status='pausing'" + OLDEST_FREE + ")" +
         ") candidates ORDER BY created_at,id LIMIT 128")
     List<String> candidates();
     @Update("UPDATE vp_job SET status='running' WHERE id=#{id} AND status='queued'")
@@ -51,7 +61,8 @@ public interface JobMapper {
     int recordFailure(String id,int attempt,int delay);
     @Update("UPDATE vp_job SET status=#{status},error=#{error},active_video=NULL WHERE id=#{id} AND status=#{expected}")
     int finish(String id,String expected,String status,String error);
-    @Update("UPDATE videos SET folder_id='videos' WHERE id=#{video} AND folder_id IS NULL")
+    @Update("UPDATE videos SET folder_id='videos',library_generation=library_generation+1,library_state='pending'," +
+        "library_attempts=0,library_after=CURRENT_TIMESTAMP(3) WHERE id=#{video}")
     void archiveVideo(String video);
     @Insert("INSERT INTO vp_graph_head(video_id,job_id) VALUES(#{video},#{job}) ON DUPLICATE KEY UPDATE job_id=#{job}")
     void publishHead(String video,String job);

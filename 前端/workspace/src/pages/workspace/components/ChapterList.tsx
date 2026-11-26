@@ -11,7 +11,7 @@ export function ChapterList() {
   const activeRef = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    activeRef.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, [activeSegmentId]);
 
   const ready = available.chapters;
@@ -19,7 +19,7 @@ export function ChapterList() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/50">
       <div className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3.5 py-2.5">
-        <span className="label-mono text-[9px]">02 · Chapters</span>
+        <span className="tool-heading">视频章节</span>
         <span className="h-px flex-1 bg-border/60" aria-hidden />
         {ready ? (
           <>

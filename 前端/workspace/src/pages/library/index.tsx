@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, FileText, Upload } from "lucide-react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronDown, ClipboardPaste, ExternalLink, FileText, Film, Plus, Upload, X } from "lucide-react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import type { LibraryDocument as Document } from "@/lib/api";
-import { api, uploadDocument } from "./api";
+import { API_BASE, type LibraryDocument as Document } from "@/lib/api";
+import { api, libraryApi, uploadDocument } from "./api";
 import { indexPending, useLibrary } from "./use-library";
 import { ThemeToggle } from "../workspace/components/ThemeToggle";
 import { ReviewQueue } from "./ReviewQueue";
-import { StudyCover } from "./StudyCover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PasteMarkdown } from "./PasteMarkdown";
 
-import { DocumentChat, type Passage } from "./DocumentChat";
+import { DocumentChat } from "./DocumentChat";
+import { passageKey, sourceLabel, videoPassagePath, type Passage, type Source } from "./source";
 
+import "./library.css";
+
+type VideoReading = {hit: Passage; filepath: string};
 type Reading = { doc: Document; lines: string[]; from: number; to: number; page: number; locate: boolean };
 const PAGE_LINES = 160;
 
@@ -37,17 +41,20 @@ export default function Library() {
 }
 
 function LibraryPage({selected}: {selected: string}) {
-  const {hash, search, state} = useLocation();
+  const {hash, search, state, key} = useLocation();
   const navigate = useNavigate();
   const library = useLibrary();
   const docs = library.data?.documents ?? [];
+  const videos = library.data?.videos ?? [];
+  const [videoReading, setVideoReading] = useState<VideoReading | null>(null);
+  const [mediaError, setMediaError] = useState(false);
   const [reading, setReading] = useState<Reading | null>(null);
-  const [panel, setPanel] = useState<"reader" | "chat">(selected ? "reader" : "chat");
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const hasSource = Boolean(selected || reading);
-  const showReview = !hasSource || reviewOpen;
-  const displayedId = showReview ? selected : reading?.doc.id ?? selected;
-  const sourceDoc = docs.find(doc => doc.id === displayedId) ?? (reading?.doc.id === displayedId ? reading.doc : undefined);
+  const [readerOpen, setReaderOpen] = useState(Boolean(selected));
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const sourceTrigger = useRef<HTMLElement | null>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const sourceDoc = reading?.doc ? docs.find(doc => doc.id === reading.doc.id) ?? reading.doc : undefined;
   const [reviewUpdated, setReviewUpdated] = useState(0);
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
@@ -69,19 +76,39 @@ function LibraryPage({selected}: {selected: string}) {
       if (generation !== readId.current) return;
       const lines = data.markdown.split("\n");
       const highlight = locate && from <= lines.length;
+      setVideoReading(null);
       setReading({doc: data.document, lines, from, to: Math.min(to, lines.length), locate: highlight,
         page: highlight ? Math.floor((from - 1) / PAGE_LINES) : 0});
     } catch (e) { if (generation === readId.current) setError((e as Error).message); }
   }, []);
   useEffect(() => {
     const range = fragmentRange(hash);
-    if (selected) void read(selected, range?.first, range?.last, Boolean(range));
+    if (selected) {
+      setReaderOpen(true);
+      setError("");
+      void read(selected, range?.first, range?.last, Boolean(range));
+    }
     return () => { readId.current++; };
-  }, [selected, hash, read]);
+  }, [selected, hash, key, read]);
 
-  function openSource(id: string, first: number, last: number) {
-    setPanel("reader");
-    setReviewOpen(false);
+  async function openSource(source: Source) {
+    sourceTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setReaderOpen(true);
+    setError("");
+    if (source.videoId) {
+      const generation = ++readId.current;
+      setReading(null);
+      setVideoReading(null);
+      try {
+        const video = await libraryApi<VideoReading>(videoPassagePath(source));
+        if (generation === readId.current) { setMediaError(false); setVideoReading(video); }
+      } catch (e) { if (generation === readId.current) setError((e as Error).message); }
+      return;
+    }
+    const {docId: id, firstLine: first, lastLine: last} = source;
+    if (!id) return;
+    setVideoReading(null);
+    setReading(null);
     const fragment = lineFragment(first, last);
     if (id === selected && hash !== fragment) {
       void navigate({search, hash: fragment}, {state, preventScrollReset: true});
@@ -103,59 +130,107 @@ function LibraryPage({selected}: {selected: string}) {
     }
   }
 
-  async function saveForReview(hit: Passage, question: string) {
-    const key = hit.docId + "/" + hit.ordinal;
+  async function saveForReview(hit: Passage, question: string, quote?: string) {
+    const key = passageKey(hit);
     try {
-      await api(`/${hit.docId}/chunks/${hit.ordinal}/review`, {method: "POST",
-        headers: {"Content-Type": "application/json"}, body: JSON.stringify({question})});
+      const options = {method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({question, quote})};
+      if (hit.videoId) await libraryApi(videoPassagePath(hit) + "/review", options);
+      else await api(`/${hit.docId}/chunks/${hit.ordinal}/review`, options);
       setSaved(previous => new Set(previous).add(key));
       setReviewUpdated(previous => previous + 1);
     } catch (e) { setError((e as Error).message); }
   }
 
-  return <main className="library-workspace flex h-full min-w-0 flex-col bg-background text-foreground" data-panel={panel}>
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border pl-14 pr-3 sm:pr-6">
-      <span className="truncate text-sm font-medium">{selected ? "文档阅读" : "资料问答与复习"}</span>
-      <div className="flex shrink-0 items-center gap-2">
-        <PasteMarkdown disabled={uploading} onSaved={id => {
+  function closeReader() {
+    readId.current++;
+    setReaderOpen(false);
+    setReading(null);
+    setVideoReading(null);
+    setError("");
+    requestAnimationFrame(() => {
+      const target = sourceTrigger.current;
+      if (target?.isConnected && target.getClientRects().length) target.focus();
+      else document.querySelector<HTMLTextAreaElement>('textarea[aria-label="资料问题"]')?.focus();
+    });
+  }
+
+  useEffect(() => {
+    if (readerOpen) closeButton.current?.focus({preventScroll: true});
+  }, [readerOpen]);
+
+  return <main className="library-workspace flex h-full min-w-0 flex-col bg-background text-foreground" data-reader={readerOpen}>
+    <header className="app-toolbar flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border pl-14 pr-2 sm:pr-5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="library-toolbar-title">资料库</span>
+        {selected && !readerOpen && <button type="button" className="library-reopen" aria-label="查看原文" title="查看原文"
+          onClick={e => {
+            sourceTrigger.current = e.currentTarget;
+            setReaderOpen(true);
+            setError("");
+            const range = fragmentRange(hash);
+            void read(selected, range?.first, range?.last, Boolean(range));
+          }}><FileText size={14}/><span>查看原文</span></button>}
+      </div>
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <ReviewQueue documentId={selected} updated={reviewUpdated} openSource={openSource} onRemove={() => setSaved(new Set())}/>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" ref={addButton} className="library-add" disabled={uploading}>
+              <Plus size={15}/>{uploading ? "正在上传…" : "添加资料"}<ChevronDown size={13}/>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            <DropdownMenuItem asChild><Link to="/?add=video"><Film size={16}/>添加视频</Link></DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => picker.current?.click()}><Upload size={16}/>上传 Markdown</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setPasteOpen(true)}><ClipboardPaste size={16}/>粘贴文档</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <PasteMarkdown open={pasteOpen} onOpenChange={setPasteOpen} returnFocus={addButton} onSaved={id => {
           void library.refetch();
           void navigate("/library?doc=" + encodeURIComponent(id));
         }}/>
-        <Button size="sm" disabled={uploading} onClick={() => picker.current?.click()}><Upload size={15}/>{uploading ? "正在上传…" : "上传 Markdown"}</Button>
         <ThemeToggle/>
       </div>
-      <input className="hidden" type="file" ref={picker} multiple accept=".md,.markdown" title="UTF-8 Markdown，每份上限 512 KiB" aria-label="选择 Markdown 文件"
+      <input hidden type="file" ref={picker} multiple accept=".md,.markdown" title="UTF-8 Markdown，每份上限 512 KiB" aria-label="选择 Markdown 文件"
         onChange={e => void upload(Array.from(e.target.files || []))}/>
     </header>
-    {!hasSource && <StudyCover subject="library" title="资料问答与复习">
-      从笔记中查找依据，把值得记住的段落加入复习。
-    </StudyCover>}
-    <div role="group" aria-label="阅读视图" className="library-panel-switch shrink-0 gap-1 border-b border-border p-2">
-      <Button variant={panel === "reader" ? "secondary" : "ghost"} size="sm" aria-pressed={panel === "reader"} onClick={() => setPanel("reader")}>文档与复习</Button>
-      <Button variant={panel === "chat" ? "secondary" : "ghost"} size="sm" aria-pressed={panel === "chat"} onClick={() => setPanel("chat")}>AI 对话</Button>
-    </div>
+    {library.isError && <button type="button" className="shrink-0 border-b py-2 text-sm text-primary" onClick={() => void library.refetch()}>资料库读取失败，点击重试</button>}
     {error && <p role="alert" className="shrink-0 border-b border-destructive/40 px-4 py-2 text-sm">{error}</p>}
-    <ResizablePanelGroup direction="horizontal" autoSaveId="library-document-chat" className="min-h-0 flex-1">
-      <ResizablePanel id="library-reader" order={1} defaultSize={54} minSize={36} tagName="section"
-        aria-label="文档与复习" className="library-reader flex min-h-0 min-w-0 flex-col">
-        <header hidden={!hasSource && !library.isError && !(library.isSuccess && !docs.length)}
-          className="shrink-0 border-b border-border px-5 pb-4 pt-5 lg:px-7">
-          {hasSource && <h1 className="truncate text-[28px] font-semibold tracking-tight" title={sourceDoc?.name}>{sourceDoc?.name ?? "文档阅读"}</h1>}
-          {sourceDoc && <p className="mt-1 text-sm text-muted-foreground">{sourceDoc.indexState === "ready" ? `已索引 · ${sourceDoc.chunks} 个段落` : indexPending(sourceDoc.indexState)
-            ? `正在建立索引 · ${sourceDoc.indexedChunks}/${sourceDoc.chunks}` : "向量索引失败，可使用全文检索"}</p>}
-          {sourceDoc?.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+sourceDoc.id+"/retry",{method:"POST"}).then(()=>library.refetch()).catch(e=>setError(e.message))}>重试索引</button>}
-          {!selected && !docs.length && library.isSuccess && <p className="mt-2 text-xs text-muted-foreground">支持 UTF-8 Markdown，每份上限 512 KiB。</p>}
-          {library.isError && <button type="button" className="mt-3 text-sm text-primary underline" onClick={() => void library.refetch()}>资料库读取失败，重试</button>}
-          {hasSource && <div role="group" aria-label="文档内容" className="mt-3 flex gap-1">
-            <Button size="sm" variant={!showReview ? "secondary" : "ghost"} aria-pressed={!showReview} onClick={() => setReviewOpen(false)}><FileText size={15}/>原文</Button>
-            <Button size="sm" variant={showReview ? "secondary" : "ghost"} aria-pressed={showReview} onClick={() => setReviewOpen(true)}>{selected ? "本篇复习" : "文档复习"}</Button>
-          </div>}
+    <ResizablePanelGroup direction="horizontal" autoSaveId="library-chat-source" className="min-h-0 flex-1">
+      <ResizablePanel id="library-chat" order={1} defaultSize={56} minSize={32} className="library-chat min-h-0 min-w-0">
+        <DocumentChat selected={selected} docs={docs} videos={videos} libraryReady={library.isSuccess} saved={saved}
+          openSource={openSource} onSave={saveForReview}/>
+      </ResizablePanel>
+      <ResizableHandle disabled={!readerOpen} aria-label="调整对话与出处的宽度" aria-orientation="vertical"
+        title="拖动分隔线，或用左右方向键调整宽度" className="library-divider hover:bg-primary focus-visible:bg-primary"/>
+      <ResizablePanel id="library-reader" order={2} defaultSize={44} minSize={32} tagName="section"
+        aria-label="资料出处" className="library-reader min-h-0 min-w-0 flex-col">
+        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {videoReading ? <Film size={14}/> : <FileText size={14}/>}资料出处
+            </span>
+            <h2 className="mt-1.5 break-words text-lg font-semibold">{videoReading?.hit.name || sourceDoc?.name || "读取资料"}</h2>
+            {sourceDoc && <p className="mt-1 text-xs text-muted-foreground">{sourceDoc.indexState === "ready" ? `已索引 · ${sourceDoc.chunks} 个段落` : indexPending(sourceDoc.indexState)
+              ? `正在建立索引 · ${sourceDoc.indexedChunks}/${sourceDoc.chunks}` : "向量索引失败，可使用全文检索"}</p>}
+            {sourceDoc?.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+sourceDoc.id+"/retry",{method:"POST"}).then(()=>library.refetch()).catch(e=>setError(e.message))}>重试索引</button>}
+          </div>
+          <Button ref={closeButton} variant="ghost" size="icon" aria-label="关闭出处，返回对话" title="关闭出处，返回对话" onClick={closeReader}><X size={17}/></Button>
         </header>
-        <div hidden={!showReview} className="vp-scroll min-h-0 overflow-y-auto p-5 lg:p-7">
-          <ReviewQueue documentId={selected} updated={reviewUpdated} openSource={openSource} onRemove={()=>setSaved(new Set())}/>
-        </div>
-        <div hidden={showReview} className="min-h-0 flex-1">
-          {reading ? <section aria-label="文档原文" className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">
+          {videoReading ? <section aria-label="视频出处" className="vp-scroll h-full space-y-4 overflow-auto p-5">
+            <p className="text-sm font-medium">{sourceLabel(videoReading.hit)}</p>
+            {videoReading.filepath && videoReading.hit.start != null && !mediaError
+              ? <video key={passageKey(videoReading.hit)} controls playsInline preload="metadata" className="w-full rounded-lg"
+                  aria-label="回看引用片段" src={API_BASE + "/uploads/" + encodeURIComponent(videoReading.filepath)}
+                  onLoadedMetadata={e => { e.currentTarget.currentTime = videoReading.hit.start ?? 0; }}
+                  onError={() => setMediaError(true)}/>
+              : videoReading.hit.start != null && <p className="text-sm text-muted-foreground">原片暂不可播放，可阅读下方引文。</p>}
+            {videoReading.hit.frame && <img key={videoReading.hit.frame} alt="引用时刻的画面" className="max-h-72 max-w-full object-contain"
+              src={API_BASE + "/frames/" + encodeURIComponent(videoReading.hit.videoId!) + "/" + encodeURIComponent(videoReading.hit.frame)}
+              onError={e => { e.currentTarget.hidden = true; }}/>}
+            <blockquote className="whitespace-pre-wrap border-l-2 border-primary/50 pl-3">{videoReading.hit.body}</blockquote>
+          </section> : reading ? <section aria-label="文档原文" className="flex h-full min-h-0 flex-col">
             {(reading.locate || reading.lines.length > PAGE_LINES) && <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2 lg:px-7">
               {reading.locate && <a className="inline-flex items-center gap-1.5 text-xs text-primary underline"
                 href={`/library?doc=${encodeURIComponent(reading.doc.id)}${lineFragment(reading.from, reading.to)}`}
@@ -175,13 +250,8 @@ function LibraryPage({selected}: {selected: string}) {
                 <span className="mr-3 select-none text-xs text-muted-foreground">{i+1}</span>{line}
               </span>);
             })}</pre>
-          </section> : selected && !error && <p role="status" className="p-5 text-sm text-muted-foreground">正在读取原文…</p>}
+          </section> : readerOpen && !error && <p role="status" className="p-5 text-sm text-muted-foreground">正在读取原文…</p>}
         </div>
-      </ResizablePanel>
-      <ResizableHandle withHandle aria-label="调整原文与 AI 对话的宽度" aria-orientation="vertical"
-        title="拖动分隔线，或用左右方向键调整宽度" className="library-divider hover:bg-primary focus-visible:bg-primary data-[resize-handle-state=drag]:bg-primary"/>
-      <ResizablePanel id="library-chat" order={2} defaultSize={46} minSize={36} className="library-chat min-h-0 min-w-0">
-        <DocumentChat selected={selected} docs={docs} saved={saved} openSource={openSource} onSave={saveForReview}/>
       </ResizablePanel>
     </ResizablePanelGroup>
   </main>;

@@ -1,4 +1,4 @@
-import { Download, FileText, FolderOpen, Waypoints } from "lucide-react";
+import { ChevronRight, Download, FileText, FolderOpen, Waypoints, PanelsTopLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,15 +18,17 @@ export function AppHeader() {
     useWorkspace();
 
   return (
-    <header className={`relative flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-3 backdrop-blur sm:pr-6 ${import.meta.env.VITE_PLATFORM === "true" ? "pl-14" : ""}`}>
+    <header className={`app-toolbar relative flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-3 backdrop-blur sm:pr-6 ${import.meta.env.VITE_PLATFORM === "true" ? "pl-14" : ""}`}>
       <div className="min-w-0 flex flex-1 items-center gap-2">
+        <PanelsTopLeft size={16} className="toolbar-symbol" aria-hidden/>
+        <span className="toolbar-crumb">工作空间</span><ChevronRight size={13} className="toolbar-crumb" aria-hidden/>
         <button type="button" onClick={clearProject} title="回到视频工作台" className="truncate text-left text-sm font-medium">
           {status === "empty" ? "视频工作台" : title}
         </button>
         {status !== "empty" && <ParseStatusBadge/>}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        <DropdownMenu>
+        {status !== "empty" && <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
@@ -34,8 +36,8 @@ export function AppHeader() {
               size="sm"
               className="group h-9 gap-2 rounded-full border-border/80 bg-transparent px-1.5 hover:bg-accent hover:text-accent-foreground sm:pl-3.5"
             >
-              <span className="label-mono hidden text-[9px] text-foreground sm:inline">导出</span>
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-200 ease-smooth group-hover:rotate-90">
+              <span className="label-mono hidden text-xs text-foreground sm:inline">导出</span>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-200 ease-smooth group-hover:translate-y-0.5">
                 <Download className="h-3 w-3" aria-hidden />
               </span>
             </Button>
@@ -57,14 +59,13 @@ export function AppHeader() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2"
-              disabled={status === "empty"}
               onSelect={clearProject}
             >
               <FolderOpen className="h-4 w-4" aria-hidden />
               换一个视频
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
         {import.meta.env.VITE_PLATFORM === "true" && recent.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="sm">最近解析</Button></DropdownMenuTrigger>

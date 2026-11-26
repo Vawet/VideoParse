@@ -19,19 +19,22 @@ import org.springframework.web.server.ResponseStatusException;
 class LibraryController {
     record Folder(String id, String name) {}
     record Video(String id, String name, double duration) {}
+    record VideoEntry(String id,String name,double duration,String indexState) {}
     record Media(String name, double duration, String filename) {}
     private final JdbcClient db;
     private final Visitor visitor;
     private final DocumentLibrary documents;
     private final AnalysisResults results;
+    private final LibrarySearch search;
     private final Path uploads;
 
-    LibraryController(JdbcClient db, Visitor visitor, DocumentLibrary documents, AnalysisResults results,
+    LibraryController(JdbcClient db, Visitor visitor, DocumentLibrary documents, AnalysisResults results,LibrarySearch search,
                       @Value("${videoparse.data}") Path root) {
         this.db = db;
         this.visitor = visitor;
         this.documents = documents;
         this.results = results;
+        this.search = search;
         this.uploads = root.resolve("uploads");
     }
 
@@ -41,9 +44,9 @@ class LibraryController {
         String owner = visitor.id();
         var folders = db.sql("SELECT id,name FROM vp_library_folder ORDER BY id DESC").query(Folder.class).list();
         var videos = db.sql("""
-            SELECT id,title AS name,duration FROM videos WHERE owner_id=? AND folder_id='videos'
+            SELECT id,title AS name,duration,library_state AS index_state FROM videos WHERE owner_id=? AND folder_id='videos'
             ORDER BY created_at DESC,id
-            """).param(owner).query(Video.class).list();
+            """).param(owner).query(VideoEntry.class).list();
         return Map.of("success",true,"folders",folders,"videos",videos,"documents",documents.list());
     }
 
@@ -61,6 +64,25 @@ class LibraryController {
         return Map.of("success",true,"video",new Video(id,video.name(),video.duration()),"filepath",filepath,"result",result);
     }
 
+    @GetMapping("/videos/{id}/passages/{key}")
+    @Transactional(readOnly=true)
+    public Map<String,Object> passage(@PathVariable String id,@PathVariable String key) {
+        var hit=search.requireHit(visitor.id(),id,key);
+        var filename=db.sql("SELECT filename FROM vp_upload WHERE video=? AND owner_id=? AND complete LIMIT 1")
+                .params(id,visitor.id()).query(String.class).optional().orElse(null);
+        return Map.of("success",true,"hit",hit,"filepath",mediaFile(id,filename));
+    }
+
+    @PostMapping("/videos/{id}/retry")
+    Map<String,Object> retry(@PathVariable String id) {
+        search.requireVideo(visitor.id(),id);
+        db.sql("""
+            UPDATE videos SET library_state='pending',library_attempts=0,library_after=CURRENT_TIMESTAMP(3)
+            WHERE id=? AND owner_id=? AND folder_id='videos' AND library_state IN ('error','empty')
+            """).params(id,visitor.id()).update();
+        return Map.of("success",true);
+    }
+
     @PatchMapping("/videos/{id}")
     @Transactional
     public Map<String,Object> rename(@PathVariable String id,@RequestBody Map<String,String> body) {
@@ -75,9 +97,11 @@ class LibraryController {
     }
 
     @DeleteMapping("/videos/{id}")
-    Map<String,Object> remove(@PathVariable String id) {
+    @Transactional
+    public Map<String,Object> remove(@PathVariable String id) {
         if (db.sql("UPDATE videos SET folder_id=NULL WHERE id=? AND owner_id=? AND folder_id='videos'")
                 .params(id,visitor.id()).update()==0) throw missing();
+        db.sql("DELETE FROM vp_video_passage WHERE video_id=?").param(id).update();
         return Map.of("success",true);
     }
 

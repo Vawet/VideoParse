@@ -25,7 +25,7 @@ export const TAB_KEYS = [
 
 export type TabKey = (typeof TAB_KEYS)[number];
 
-export type WorkspaceStatus = "empty" | "uploading" | "parsing" | "ready" | "failed";
+export type WorkspaceStatus = "empty" | "uploading" | "parsing" | "pausing" | "paused" | "ready" | "failed";
 
 export const NO_RESULTS: Record<ResultKey, boolean> = {
   chapters: false,
@@ -78,6 +78,9 @@ export type WorkspaceValue = {
   startFailureDemo: () => void;
   uploadFile: (file: File) => void | Promise<void>;
   cancelUpload: () => void;
+  canControlParse: boolean;
+  controlPending: boolean;
+  toggleParsePause: () => void;
   retry: () => void;
   clearProject: () => void;
 

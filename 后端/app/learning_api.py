@@ -88,7 +88,7 @@ def document_web_sources(params, base):
 
 def document_answer(params, base):
     result = grounded.compose(params["question"], params["excerpts"], params.get("history"),
-                              params.get("allow_explanation", False))
+                              params.get("allow_explanation", False), params.get("source_labels"))
     return _ok({"success": True, **result})
 
 

@@ -16,7 +16,7 @@ export function ChatTab() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, [messages]);
 
   const submit = (question: string) => {
@@ -29,9 +29,7 @@ export function ChatTab() {
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-3">
       {isLive && videoId && import.meta.env.VITE_PLATFORM === "true" && <EvidencePanel video={videoId} seek={seekTo} />}
       <div className="flex items-center gap-2.5">
-        <span className="label-mono text-[9px]">01 · Chat</span>
-        <span className="h-px w-6 bg-border" aria-hidden />
-        <h2 className="text-[13px] text-foreground">视频问答</h2>
+        <h2 className="tool-heading">视频问答</h2>
         <span className="hidden text-[11px] text-muted-foreground sm:inline">
           {isLive ? "视频证据与联网资料" : "基于 1,248 条字幕片段检索"}
         </span>

@@ -71,6 +71,7 @@ class JobRunner {
             if (task == null) return;
             boolean runnable = switch (task.status()) {
                 case "queued" -> jobs.startQueued(id) == 1;
+                case "pausing" -> { service.parkIfRequested(id); yield false; }
                 case "running" -> true; // Its previous execution no longer holds the job lock.
                 default -> false;
             };
@@ -86,19 +87,26 @@ class JobRunner {
             return true;
         } finally {capacity.unlock();}
     }
+    private static final class Paused extends RuntimeException {}
+
     private void execute(String id,String video,Connection lock) throws SQLException {
         var pb=new ProcessBuilder(python,"-m",engine.equals("java")?"app.tool_worker":"app.platform_worker",id,video);
         pb.directory(directory.toFile()); pb.redirectError(ProcessBuilder.Redirect.INHERIT);
         pb.environment().put("DATA_ROOT",data.toAbsolutePath().normalize().toString());
         pb.environment().put("PUBLIC_BASE_URL",publicBase);
+        // Imported pre-workspace jobs can have no owner. Keep their receipts separate.
+        String owner=java.util.Objects.toString(jobs.videoOwner(video),"legacy");
+        pb.environment().put("VP_USAGE_OWNER",owner);
+        pb.environment().put("VP_USAGE_OPERATION","analyze");
         if(engine.equals("java")) {
-            try {
+            try (var scope=ApiUsage.scope(owner,"repair")) {
                 flow.run(pb, event -> {
                     try {if(!lock.isValid(3)) throw new IllegalStateException("任务会话已断开");}
                     catch(SQLException ex){throw new IllegalStateException(ex);}
-                    jobs.event(id,event);
-                });
-            } catch(InterruptedException ex){Thread.currentThread().interrupt();return;}
+                    service.appendEvent(id,event);
+                }, () -> { if (service.parkIfRequested(id)) throw new Paused(); });
+            } catch(Paused stopped){return;}
+              catch(InterruptedException ex){Thread.currentThread().interrupt();return;}
               catch(Exception ex){
                 if(!lock.isValid(3)) throw new SQLException("丢失任务锁，保留待恢复任务",ex);
                 log.error("解析失败 {}",id,ex);
@@ -108,15 +116,23 @@ class JobRunner {
             service.mediaReady(id);
             return;
         }
+        pb.environment().put("VP_PAUSE_PROTOCOL", "1");
         Process child;
         try {child=pb.start();} catch(java.io.IOException e) {service.finish(id,"running","无法启动解析进程");return;}
         try(var readers=Executors.newVirtualThreadPerTaskExecutor()) {
             var reader=readers.submit(() -> {
-                try(var stream=child.inputReader(StandardCharsets.UTF_8)) {
+                try(var stream=child.inputReader(StandardCharsets.UTF_8);
+                    var commands=child.outputWriter(StandardCharsets.UTF_8)) {
                     for(String line;(line=stream.readLine())!=null;) {
+                        if (line.equals("VP_CHECKPOINT")) {
+                            boolean paused = service.parkIfRequested(id);
+                            commands.write(paused ? "pause\n" : "continue\n");
+                            commands.flush();
+                            continue;
+                        }
                         if(!line.startsWith("VP_EVENT ")) continue;
                         var ev=json.readTree(line.substring(9));
-                        if(ev.isObject() && ev.hasNonNull("type")) jobs.event(id,ev.toString());
+                        if(ev.isObject() && ev.hasNonNull("type")) service.appendEvent(id,ev.toString());
                     }
                 }
                 return null;
@@ -128,7 +144,7 @@ class JobRunner {
                 }
                 reader.get();
                 if(child.exitValue()==0) service.mediaReady(id);
-                else service.finish(id,"running","解析进程失败，退出码 "+child.exitValue());
+                else if(child.exitValue()!=76) service.finish(id,"running","解析进程失败，退出码 "+child.exitValue());
             } catch(InterruptedException e) {Thread.currentThread().interrupt();}
               catch(ExecutionException e) {log.error("事件记录失败，保留可恢复任务 {}",id,e);}
             finally {if(child.isAlive()) child.destroyForcibly();}

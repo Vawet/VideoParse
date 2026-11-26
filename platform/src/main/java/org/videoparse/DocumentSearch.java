@@ -21,6 +21,8 @@ class DocumentSearch {
     DocumentSearch(JdbcClient db,VectorIndex vectors) { this.db=db; this.vectors=vectors; }
 
     List<Passage> opening(String owner,String doc) {
+        if(doc==null) return db.sql(SELECT+" AND c.ordinal_no=0 ORDER BY d.created_at DESC,d.id LIMIT 5")
+            .param(owner).query(Passage.class).list();
         return db.sql(SELECT+" AND d.id=? ORDER BY c.ordinal_no LIMIT 5")
             .params(owner,doc).query(Passage.class).list();
     }

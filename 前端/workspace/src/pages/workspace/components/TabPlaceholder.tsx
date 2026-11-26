@@ -20,6 +20,8 @@ export function TabPlaceholder({ label, unsupported }: { label: string; unsuppor
     );
   }
 
+  if (status === "paused") return <p className="p-6 text-center text-sm text-muted-foreground">继续解析后将生成「{label}」。</p>;
+
   if (status === "failed") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/35 bg-destructive-soft/40 p-8 text-center">

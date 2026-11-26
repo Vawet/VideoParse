@@ -103,7 +103,7 @@ def _note_stats(steps=0, tool_calls=0, repeated=0):
     stats.repeated_tool_calls += repeated
 
 
-def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=None, stop_tool=None):
+def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=None, stop_tool=None, checkpoint=lambda: None):
     """运行 Agent 循环，直到模型不再调用工具 / 调用了 stop_tool / 达到最大步数。
 
     messages 会被原地追加（便于聊天场景保留多轮历史）。返回最终文本回复。
@@ -128,6 +128,7 @@ def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=Non
         return (msg.content or "").strip()
 
     for step in range(1, max_steps + 1):
+        checkpoint()
         if guard:
             _compact_tool_results(messages)
             if any(m.get("role") == "tool" for m in messages):
@@ -144,6 +145,7 @@ def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=Non
 
         stop = repeated = False
         for call in msg.tool_calls:
+            checkpoint()
             name = call.function.name
             try:
                 args = json.loads(call.function.arguments or "{}")
@@ -183,12 +185,13 @@ def run_agent(group, ws: Workspace, messages, emit=lambda e: None, max_steps=Non
     raise AgentStepLimit(max_steps)
 
 
-def analyze_video(ws: Workspace, emit=lambda e: None, mode=None):
+def analyze_video(ws: Workspace, emit=lambda e: None, mode=None, checkpoint=lambda: None):
     """一键解析。
 
     pipeline(默认)：确定性流水线编排全部步骤，仅当出现失败/校验问题时才交给 Agent 修复；
     agent：全程由 Agent 自主规划。无论哪种，都保证最终一定有 result 文件。
     """
+    checkpoint()
     mode = mode or config.ANALYZE_MODE
     if _result_exists(ws):
         os.remove(ws.result_path)  # 重新解析：避免旧结果干扰"是否已收尾"的判断
@@ -200,22 +203,23 @@ def analyze_video(ws: Workspace, emit=lambda e: None, mode=None):
                 {"role": "system", "content": prompts.ANALYZE_SYSTEM_PROMPT},
                 {"role": "user", "content": "请解析这个视频，工具会自动使用当前视频，你不需要传 video_id。"},
             ]
-            run_agent("analyze", ws, messages, emit, stop_tool="finish")
+            run_agent("analyze", ws, messages, emit, stop_tool="finish", checkpoint=checkpoint)
         else:
-            issues = pipeline.run_pipeline(ws, emit)
+            issues = pipeline.run_pipeline(ws, emit, checkpoint)
             if issues:
                 emit({"type": "thought", "step": 0, "text": "流水线遇到问题，交给 Agent 修复：" + "；".join(issues)})
                 messages = [
                     {"role": "system", "content": prompts.ANALYZE_SYSTEM_PROMPT},
                     {"role": "user", "content": prompts.REPAIR_USER_PROMPT.format(issues="\n".join(f"- {i}" for i in issues))},
                 ]
-                run_agent("analyze", ws, messages, emit, max_steps=12, stop_tool="finish")
+                run_agent("analyze", ws, messages, emit, max_steps=12, stop_tool="finish", checkpoint=checkpoint)
     except Exception as e:  # noqa: BLE001
         error = str(e)
         log.exception("解析异常")
         emit({"type": "error", "text": error})
 
     if not _result_exists(ws):
+        checkpoint()
         # 兜底（流水线无问题，或 Agent 没来得及 finish）：把已有产物汇总出来
         note = "流水线自动完成。" if (mode != "agent" and not error) else f"未正常收尾，已自动汇总现有结果。{error or ''}"
         emit({"type": "tool_start", "step": 99, "tool": "finish", "args": {"note": note}})

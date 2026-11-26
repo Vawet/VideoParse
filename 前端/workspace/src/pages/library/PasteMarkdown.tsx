@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type ReactElement, type RefObject, type FormEvent } from "react";
 import { ClipboardPaste, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,9 +12,15 @@ function markdownName(title: string) {
   return Array.from(stem || "未命名笔记").slice(0, 230).join("") + ".md";
 }
 
-export function PasteMarkdown({disabled = false, sidebar = false, onSaved}: {disabled?: boolean; sidebar?: boolean; onSaved: (id: string) => void}) {
+export function PasteMarkdown({disabled = false, sidebar = false, trigger, open: controlledOpen, onOpenChange, returnFocus, onSaved}: {
+  disabled?: boolean; sidebar?: boolean; trigger?: ReactElement; open?: boolean;
+  onOpenChange?: (open: boolean) => void; returnFocus?: RefObject<HTMLButtonElement | null>;
+  onSaved: (id: string) => void;
+}) {
   const picker = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [markdown, setMarkdown] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -49,18 +55,18 @@ export function PasteMarkdown({disabled = false, sidebar = false, onSaved}: {dis
   }
 
   return <Dialog open={open} onOpenChange={next => { if (!saving) setOpen(next); }}>
-    <DialogTrigger asChild>
-      {sidebar ? <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="新增文档" title="新增文档"><Plus size={16}/></Button> :
+    {controlledOpen === undefined && <DialogTrigger asChild>
+      {trigger ?? (sidebar ? <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="新增文档" title="新增文档"><Plus size={16}/></Button> :
       <Button size="sm" variant="outline" disabled={disabled} aria-label="粘贴 Markdown" title="粘贴 Markdown">
         <ClipboardPaste size={15}/><span className="hidden sm:inline">粘贴文本</span>
-      </Button>}
-    </DialogTrigger>
-    <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl">
+      </Button>)}
+    </DialogTrigger>}
+    <DialogContent onCloseAutoFocus={e => { if (returnFocus?.current) { e.preventDefault(); returnFocus.current.focus(); } }} className="max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl">
       <DialogHeader>
-        <DialogTitle>{sidebar ? "新增文档" : "粘贴 Markdown"}</DialogTitle>
+        <DialogTitle>{sidebar || trigger ? "新增文档" : "粘贴 Markdown"}</DialogTitle>
         <DialogDescription>保存为 .md 文档，加入你的资料库。</DialogDescription>
       </DialogHeader>
-      {sidebar && <div>
+      {(sidebar || trigger) && <div>
         <Button variant="outline" size="sm" disabled={saving} onClick={() => picker.current?.click()}><Upload size={15}/>选择 Markdown 文件</Button>
         <input ref={picker} type="file" accept=".md,.markdown" aria-label="从本机添加 Markdown" hidden
           onChange={e => {const file=e.target.files?.[0]; e.target.value=""; if (file) void saveFile(file);}}/>

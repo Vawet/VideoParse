@@ -21,7 +21,42 @@ def visitor(base):
         return response.json()["workspace_id"], session.cookies.get_dict()
 
 
-def run(base, database_url, task_count=1):
+def cross_instance_pause(reader, writer, engine, video, cookies):
+    job = uuid.uuid4().hex
+    params = {"job": job, "video": video}
+    with engine.connect() as lock:
+        assert lock.execute(text("SELECT GET_LOCK(:key,0)"), {"key":"videoparse:"+job}).scalar() == 1
+        try:
+            with engine.begin() as db:
+                db.execute(text("INSERT INTO vp_job(id,video_id,active_video,status) VALUES (:job,:video,:video,'running')"), params)
+            with requests.get(f"{reader}/tasks/{job}/events", cookies=cookies, stream=True, timeout=(5,10)) as stream:
+                stream.raise_for_status()
+                lines = stream.iter_lines(chunk_size=1)
+                assert next(lines).startswith(b": keep-alive")
+
+                def next_data():
+                    return next(json.loads(line[6:]) for line in lines if line.startswith(b"data: "))
+
+                # An out-of-band insert has no Redis hint. Its arrival identifies a fresh SQL poll.
+                with engine.begin() as db:
+                    db.execute(text("INSERT INTO vp_event(job_id,payload) VALUES (:job,:body)"),
+                               {"job":job, "body":json.dumps({"type":"poll-marker"})})
+                assert next_data() == {"type":"poll-marker"}
+                start = time.monotonic()
+                response = requests.post(f"{writer}/tasks/{job}/pause", cookies=cookies, timeout=4)
+                response.raise_for_status()
+                assert next_data() == {"type":"task_state","status":"pausing"}
+                elapsed = time.monotonic()-start
+                assert elapsed < 2, f"Expected a Redis wake-up before the 3s recovery poll, got {elapsed:.2f}s"
+                print(f"Silent insert replayed; remote committed pause delivered in {elapsed:.3f}s")
+        finally:
+            with engine.begin() as db:
+                db.execute(text("DELETE FROM vp_event WHERE job_id=:job"), params)
+                db.execute(text("DELETE FROM vp_job WHERE id=:job"), params)
+            lock.execute(text("SELECT RELEASE_LOCK(:key)"), {"key":"videoparse:"+job})
+
+
+def run(base, database_url, task_count=1, writer=None):
     base = base.rstrip("/")
     readers = max(64, task_count)
     gate = Barrier(readers + 1, timeout=30)
@@ -90,6 +125,8 @@ def run(base, database_url, task_count=1):
             assert read(0, cursor)[0] == [event for event in ids[0] if event > cursor]
         print(f"{readers} connections, {task_count} tasks, {idle} SELECTs during 5 idle seconds, ordered replay OK")
         assert idle < readers, "Idle reads should be shared across subscribers and tasks"
+        if writer:
+            cross_instance_pause(base, writer.rstrip("/"), engine, videos[0], owners[0][1])
     finally:
         with engine.begin() as conn:
             for table, key, values in [("vp_event", "job_id", tasks), ("vp_job", "id", tasks), ("videos", "id", videos)]:
@@ -103,8 +140,9 @@ def run(base, database_url, task_count=1):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("api_base")
+    parser.add_argument("--writer-api", help="第二个共享 MySQL 和 Redis 的 Spring 实例，用于验证跨实例唤醒")
     parser.add_argument("--tasks", type=int, default=1, help="同时被订阅的独立任务数")
     args = parser.parse_args()
     if not 1 <= args.tasks <= 256:
         parser.error("--tasks must be between 1 and 256")
-    run(args.api_base, os.environ["FANOUT_TEST_DATABASE_URL"], args.tasks)
+    run(args.api_base, os.environ["FANOUT_TEST_DATABASE_URL"], args.tasks, args.writer_api)

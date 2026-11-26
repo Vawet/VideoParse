@@ -32,7 +32,7 @@ export function SlidesTab() {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="label-mono text-[9px]">01 · Key frames</span>
+        <span className="tool-heading">关键帧</span>
         <span className="h-px w-6 bg-border" aria-hidden />
         <span className="text-[11px] text-muted-foreground">
           从 {lecture.stats.framesTotal} 帧保留 {lecture.stats.framesKept} 张
@@ -81,7 +81,7 @@ export function SlidesTab() {
                   isCurrent ? "border-primary/45" : "border-border/70 hover:border-border",
                 )}
               >
-                <div className="frame-brackets m-1">
+                <div className="relative m-1">
                   <button
                     type="button"
                     onClick={() => jumpToSlide(item.id)}
@@ -98,7 +98,7 @@ export function SlidesTab() {
                     {isCurrent ? (
                       <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-background/80 px-2 py-0.5 backdrop-blur">
                         <span className="h-1.5 w-1.5 animate-live-pulse rounded-full bg-primary" aria-hidden />
-                        <span className="label-mono text-[8px] text-foreground">Now playing</span>
+                        <span className="label-mono text-[8px] text-foreground">当前片段</span>
                       </span>
                     ) : null}
                   </button>
@@ -139,7 +139,7 @@ export function SlidesTab() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="frame-brackets m-1">
+          <div className="relative m-1">
             <div className="overflow-hidden rounded-sm border border-border/50 bg-card">
               <img
                 src={slide.image}

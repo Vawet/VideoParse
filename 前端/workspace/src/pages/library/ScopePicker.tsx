@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { Check, ChevronsUpDown, Layers3 } from "lucide-react";
+import { Check, ChevronDown, Layers3 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type ScopeGroup = {label: string; icon: LucideIcon; items: {value: string; name: string}[]};
 
-export function ScopePicker({value, groups, disabled, onChange}: {
-  value: string; groups: ScopeGroup[]; disabled: boolean; onChange: (value: string) => void;
+export function ScopePicker({value, detail, groups, disabled, onChange}: {
+  value: string; detail?: string; groups: ScopeGroup[]; disabled: boolean; onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const group = groups.find(group => group.items.some(item => item.value === value));
@@ -15,10 +15,12 @@ export function ScopePicker({value, groups, disabled, onChange}: {
   const Icon = group?.icon ?? Layers3;
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger asChild>
-      <button type="button" disabled={disabled} aria-label="检索范围" title={selected?.name}
-        className="inline-flex min-h-9 max-w-[55%] items-center gap-2 rounded-full border border-primary/25 bg-primary/5 px-3 text-xs font-medium hover:bg-primary/10 focus-visible:outline-ring disabled:opacity-50">
-        <Icon size={15} aria-hidden className="shrink-0 text-primary"/>
-        <span className="truncate">{selected?.name ?? "选择资料"}</span><ChevronsUpDown size={13} aria-hidden className="shrink-0 text-muted-foreground"/>
+      <button type="button" disabled={disabled} aria-label="检索范围" title={[selected?.name, detail].filter(Boolean).join(" · ")}
+        className="library-scope">
+        <Icon size={14} aria-hidden className="shrink-0"/>
+        <span className="truncate">{selected?.name ?? "选择资料"}</span>
+        {detail && <span className="library-scope-count">· {detail}</span>}
+        <ChevronDown size={12} aria-hidden className="shrink-0"/>
       </button>
     </PopoverTrigger>
     <PopoverContent aria-label="选择检索范围" side="top" align="start" collisionPadding={10}

@@ -6,6 +6,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import { ErrorFallback } from "./components/error-boundary/error-fallback";
 import { reportCaughtError } from "./lib/report-caught-error";
 import "./index.css";
+import "./workbench.css";
 
 const container = document.getElementById("root");
 

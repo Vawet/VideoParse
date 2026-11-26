@@ -32,12 +32,12 @@ export function SlideLightbox() {
     <Dialog open={lightbox.open} onOpenChange={(open) => (open ? undefined : closeLightbox())}>
       <DialogContent className="max-w-5xl gap-3 border-border/70 bg-background/95 p-3 shadow-elevated backdrop-blur sm:p-5">
         <DialogTitle className="sr-only">幻灯片放大查看</DialogTitle>
-        <div className="frame-brackets">
-          <img
+        <div className="relative">
+          <img key={slide.id}
             src={slide.image}
             alt={slide.title}
             crossOrigin="anonymous"
-            className="max-h-[68vh] w-full rounded-sm border border-border/60 object-contain"
+            className="animate-fade-in max-h-[68vh] w-full rounded-sm border border-border/60 object-contain"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 px-1">

@@ -1,8 +1,6 @@
 package org.videoparse;
 
 import com.fasterxml.jackson.databind.*;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.data.segment.TextSegment;
 import java.io.IOException;
@@ -27,29 +25,43 @@ class VectorIndex {
     private final DataSource db;
     private final String endpoint,key,collection;
     private final LocalEmbeddings local;
+    private final ApiUsage usage;
+    private final boolean hostedQdrant;
     private final OpenAiEmbeddingModel model;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final Semaphore indexing=new Semaphore(1);
     private final ReentrantLock schemaLock = new ReentrantLock();
-    private record DocumentQuery(String owner, String question) {}
-    private final Cache<DocumentQuery,float[]> queryEmbeddings = CacheBuilder.newBuilder()
-        .maximumSize(512).expireAfterWrite(Duration.ofMinutes(10)).build();
+    private final QueryEmbeddingCache queryEmbeddings;
     private volatile long nextSchemaCheck = System.nanoTime();
-    VectorIndex(ObjectMapper json,LocalEmbeddings local,DataSource db,@Value("${QDRANT_URL:}") String endpoint,@Value("${QDRANT_API_KEY:}") String key,
+    VectorIndex(ObjectMapper json,LocalEmbeddings local,DataSource db,ApiUsage usage,QueryEmbeddingCache queryEmbeddings,@Value("${QDRANT_URL:}") String endpoint,@Value("${QDRANT_API_KEY:}") String key,
                 @Value("${EMBEDDING_API_KEY:}") String apiKey,@Value("${EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}") String base,
                 @Value("${PLATFORM_EMBED_MODEL:BAAI/bge-m3}") String name) {
+        this.usage=usage;
+        this.queryEmbeddings=queryEmbeddings;
+        String host=endpoint.isBlank() ? "" : URI.create(endpoint).getHost();
+        this.hostedQdrant=!key.isBlank() && host!=null && host.endsWith(".cloud.qdrant.io");
         this.json=json;this.endpoint=endpoint;this.key=key;this.local=local;this.db=db;
         String identity=apiKey.isBlank() ? "local|"+local.modelName() : base+"|"+name;
         this.collection="vp_"+UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString().replace("-","");
         this.model=apiKey.isBlank() || endpoint.isBlank()?null:OpenAiEmbeddingModel.builder()
-            .baseUrl(base).modelName(name).apiKey(apiKey).timeout(Duration.ofSeconds(30)).maxRetries(0).build();
+            .httpClientBuilder(new UsageHttpClient(usage,json,name)).baseUrl(base).modelName(name).apiKey(apiKey).timeout(Duration.ofSeconds(30)).maxRetries(0).build();
     }
     private HttpResponse<String> call(String verb,String path,Object body) throws IOException, InterruptedException {
         var b=HttpRequest.newBuilder(URI.create(endpoint+"/collections/"+collection+path))
                 .timeout(Duration.ofSeconds(10)).header("Content-Type","application/json");
         if(!key.isBlank()) b.header("api-key",key);
-        return http.send(b.method(verb,body==null?HttpRequest.BodyPublishers.noBody():
-                    HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
+        var request=b.method(verb,body==null ? HttpRequest.BodyPublishers.noBody() :
+            HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
+        if (!hostedQdrant) return http.send(request,HttpResponse.BodyHandlers.ofString());
+        long id=usage.begin(endpoint,"Qdrant Cloud");
+        try {
+            var result=http.send(request,HttpResponse.BodyHandlers.ofString());
+            ApiUsage.recordResult(usage,id,result.statusCode()/100==2 ? "unreported" : "failed",null);
+            return result;
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            ApiUsage.recordResult(usage,id,"failed",null);
+            throw e;
+        }
     }
     private JsonNode require(HttpResponse<String> r) throws IOException {
         if(r.statusCode()/100!=2) throw new java.io.IOException("Qdrant HTTP "+r.statusCode());
@@ -62,6 +74,9 @@ class VectorIndex {
     }
     boolean configured() { return !endpoint.isBlank(); }
     String space() { return collection; }
+    private float[] queryVector(String owner,String question) throws Exception {
+        return queryEmbeddings.get(collection,owner,question,() -> embed(List.of(question),true)[0]);
+    }
 
     private void prepareFilterIndexes() throws InterruptedException {
         if (System.nanoTime() - nextSchemaCheck < 0) return;
@@ -102,71 +117,72 @@ class VectorIndex {
     }
 
     void indexDocument(String owner,String doc,List<MarkdownSections.Chunk> chunks) throws Exception {
-        if (!configured()) throw new IOException("未配置向量库");
-        var missing = new LinkedHashMap<String,MarkdownSections.Chunk>();
-        for (var chunk : chunks) {
-            String key = "markdown/" + doc + "/" + chunk.ordinal();
-            missing.put(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString(), chunk);
-        }
-        var stored = storedPoints(missing.keySet(), List.of("owner","document","ordinal"));
-        if (stored.isPresent()) {
-            for (var point : stored.get()) {
-                String id = point.path("id").textValue();
-                var chunk = missing.get(id);
-                var payload = point.path("payload");
-                var ordinal = payload.path("ordinal");
-                if (chunk != null && owner.equals(payload.path("owner").textValue())
-                    && doc.equals(payload.path("document").textValue()) && ordinal.isIntegralNumber()
-                    && ordinal.longValue() == chunk.ordinal()) missing.remove(id);
+        try (var scope=ApiUsage.scope(owner,"document_index")) {
+            if (!configured()) throw new IOException("未配置向量库");
+            var missing = new LinkedHashMap<String,MarkdownSections.Chunk>();
+            for (var chunk : chunks) {
+                String key = "markdown/" + doc + "/" + chunk.ordinal();
+                missing.put(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString(), chunk);
             }
+            var stored = storedPoints(missing.keySet(), List.of("owner","document","ordinal"));
+            if (stored.isPresent()) {
+                for (var point : stored.get()) {
+                    String id = point.path("id").textValue();
+                    var chunk = missing.get(id);
+                    var payload = point.path("payload");
+                    var ordinal = payload.path("ordinal");
+                    if (chunk != null && owner.equals(payload.path("owner").textValue())
+                        && doc.equals(payload.path("document").textValue()) && ordinal.isIntegralNumber()
+                        && ordinal.longValue() == chunk.ordinal()) missing.remove(id);
+                }
+            }
+            if (missing.isEmpty()) return;
+            var texts = missing.values().stream().map(c -> c.heading()+"\n"+c.body()).toList();
+            var embeddings = embed(texts, false);
+            if (stored.isEmpty()) createCollection(embeddings[0].length);
+            var points = new ArrayList<Object>();
+            for (var entry : missing.entrySet()) {
+                points.add(Map.of("id",entry.getKey(), "vector",embeddings[points.size()],
+                    "payload",Map.of("owner",owner, "document",doc, "ordinal",entry.getValue().ordinal())));
+            }
+            require(call("PUT","/points?wait=true",Map.of("points",points)));
         }
-        if (missing.isEmpty()) return;
-        var texts = missing.values().stream().map(c -> c.heading()+"\n"+c.body()).toList();
-        var embeddings = embed(texts, false);
-        if (stored.isEmpty()) createCollection(embeddings[0].length);
-        var points = new ArrayList<Object>();
-        for (var entry : missing.entrySet()) {
-            points.add(Map.of("id",entry.getKey(), "vector",embeddings[points.size()],
-                "payload",Map.of("owner",owner, "document",doc, "ordinal",entry.getValue().ordinal())));
-        }
-        require(call("PUT","/points?wait=true",Map.of("points",points)));
     }
 
     void removeDocument(String owner,String doc) {
-        if (!configured()) return;
-        try {
-            var filter=Map.of("must",List.of(condition("owner",owner),condition("document",doc)));
-            var response=call("POST","/points/delete?wait=true",Map.of("filter",filter));
-            if (response.statusCode()!=404) require(response);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        } catch (IOException ex) {
-            // Searches already exclude document IDs removed from the library.
-            log.warn("无法清理已删除文档的向量 {} ({})",doc,ex.getClass().getSimpleName());
+        try (var scope=ApiUsage.scope(owner,"document_remove")) {
+            if (!configured()) return;
+            try {
+                var filter=Map.of("must",List.of(condition("owner",owner),condition("document",doc)));
+                var response=call("POST","/points/delete?wait=true",Map.of("filter",filter));
+                if (response.statusCode()!=404) require(response);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            } catch (IOException ex) {
+                // Searches already exclude document IDs removed from the library.
+                log.warn("无法清理已删除文档的向量 {} ({})",doc,ex.getClass().getSimpleName());
+            }
         }
     }
 
     record DocHit(String doc,int ordinal) {}
     List<DocHit> documents(String owner,List<String> documents,String question) throws Exception {
-        prepareFilterIndexes();
-        var conditions=new ArrayList<Object>();
-        conditions.add(condition("owner",owner));
-        conditions.add(Map.of("key","document","match",Map.of("any",documents)));
-        // Only the embedding is independent of document scope. Always search the current permitted corpus.
-        var query = queryEmbeddings.get(new DocumentQuery(owner, question), () -> {
-            float[] vector = embed(List.of(question),true)[0];
-            if (vector.length == 0) throw new IOException("问题向量为空");
-            for (float value : vector) if (!Float.isFinite(value)) throw new IOException("问题向量无效");
-            return vector;
-        });
-        var found=require(call("POST","/points/query",Map.of("query",query,
-            "filter",Map.of("must",conditions),"with_payload",true,"limit",24,"score_threshold",0.4)));
-        var hits=new ArrayList<DocHit>();
-        for (var point:found.path("points")) {
-            var payload=point.path("payload");
-            hits.add(new DocHit(payload.path("document").asText(),payload.path("ordinal").asInt(-1)));
+        try (var scope=ApiUsage.scope(owner,"document_search")) {
+            prepareFilterIndexes();
+            var conditions=new ArrayList<Object>();
+            conditions.add(condition("owner",owner));
+            conditions.add(Map.of("key","document","match",Map.of("any",documents)));
+            // Only the embedding is independent of document scope. Always search the current permitted corpus.
+            var query = queryVector(owner,question);
+            var found=require(call("POST","/points/query",Map.of("query",query,
+                "filter",Map.of("must",conditions),"with_payload",true,"limit",24,"score_threshold",0.4)));
+            var hits=new ArrayList<DocHit>();
+            for (var point:found.path("points")) {
+                var payload=point.path("payload");
+                hits.add(new DocHit(payload.path("document").asText(),payload.path("ordinal").asInt(-1)));
+            }
+            return hits;
         }
-        return hits;
     }
 
     private void indexVideoBatch(String video, String revision, List<EvidenceCorpus.Passage> batch,
@@ -221,22 +237,24 @@ class VectorIndex {
         }
     }
 
-    List<Integer> ranked(String video,EvidenceCorpus.Index index,String q) throws Exception {
-        var docs=index.passages();
-        if(endpoint.isBlank() || docs.isEmpty()) return List.of();
-        prepareFilterIndexes();
-        String rev=index.vectorRevision(json);
-        var match=List.of(condition("video",video),condition("revision",rev));
-        var filter=Map.of("must",match);
-        if (!ensureVideoIndexed(video,rev,docs,filter)) return List.of();
-        float[] query=embed(List.of(q),true)[0];
-        var found=require(call("POST","/points/query",Map.of("query",query,"filter",filter,"limit",16,"score_threshold",0.4,"with_payload",true)));
-        var ids=new ArrayList<Integer>();
-        for(var point:found.path("points")) {
-            int i=point.path("payload").path("index").asInt(-1);
-            if(i>=0 && i<docs.size()) ids.add(i);
+    List<Integer> ranked(String owner,String video,EvidenceCorpus.Index index,String q) throws Exception {
+        try (var scope=ApiUsage.scope(owner,"evidence_search")) {
+            var docs=index.passages();
+            if(endpoint.isBlank() || docs.isEmpty()) return List.of();
+            prepareFilterIndexes();
+            String rev=index.vectorRevision(json);
+            var match=List.of(condition("video",video),condition("revision",rev));
+            var filter=Map.of("must",match);
+            if (!ensureVideoIndexed(video,rev,docs,filter)) return List.of();
+            float[] query=queryVector(owner,q);
+            var found=require(call("POST","/points/query",Map.of("query",query,"filter",filter,"limit",16,"score_threshold",0.4,"with_payload",true)));
+            var ids=new ArrayList<Integer>();
+            for(var point:found.path("points")) {
+                int i=point.path("payload").path("index").asInt(-1);
+                if(i>=0 && i<docs.size()) ids.add(i);
+            }
+            return ids;
         }
-        return ids;
     }
     private Object condition(String name,String value){return Map.of("key",name,"match",Map.of("value",value));}
 }

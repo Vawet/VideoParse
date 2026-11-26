@@ -59,11 +59,13 @@ const sourceName = (s: string) => s === "ocr" ? "画面文字" : s === "frame_no
 </template>
 
 <style scoped>
-.evidence { border: 1px solid hsl(var(--border)); border-radius: .65rem; padding: .55rem .8rem; font-size: .8rem; }
+.evidence { border: 1px solid hsl(var(--border)); border-radius: 1rem; padding: .85rem 1rem; background: hsl(var(--card)); font-size: .8rem; }
 summary, button { cursor: pointer; }
+summary { color: hsl(var(--foreground)); font-weight: 600; }
 form { display: flex; gap: .5rem; margin-top: .6rem; }
 input { flex: 1; min-width: 0; color: inherit; background: transparent; border-bottom: 1px solid hsl(var(--border)); }
 button { color: hsl(var(--primary)); text-align: left; }
+form button { background: hsl(var(--primary-soft)); padding: .35rem .75rem; border-radius: .7rem; }
 button:disabled { opacity: .6; }
 .records { overflow: auto; max-height: min(33vh, 20rem); }
 .hit { margin-top: .65rem; }

@@ -64,6 +64,16 @@ class TaskController {
         return job;
     }
 
+    @PostMapping("/tasks/{id}/pause")
+    Map<String,Object> pause(@PathVariable String id) {
+        return Map.of("success", true, "status", service.control(id, visitor.id(), true));
+    }
+
+    @PostMapping("/tasks/{id}/resume")
+    Map<String,Object> resume(@PathVariable String id) {
+        return Map.of("success", true, "status", service.control(id, visitor.id(), false));
+    }
+
     @GetMapping("/tasks/{id}")
     Map<String,Object> status(@PathVariable String id) {
         var j=require(jobs.ownedStatus(id, visitor.id()));

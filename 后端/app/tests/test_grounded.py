@@ -25,10 +25,12 @@ def test_chat_history_and_separate_supplement(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "offline-test")
     monkeypatch.setattr(grounded.llm, "chat_json", generate)
     history = [{"role": "user", "content": "队列" * 1000}] * 12
-    params = {"question": "举个例子", "history": history, "excerpts": ["什么是队列？"]}
+    params = {"question": "举个例子", "history": history, "excerpts": ["什么是队列？"],
+              "source_labels": ["数据结构课 · AI 讲义"]}
     body, _ = learning_api.document_answer({**params, "allow_explanation": True}, "/api")
     assert body["model_status"] == "completed" and body["explanation"] == "队列遵循先进先出。"
     assert not body["claims"] and "reasoning_content" not in body
+    assert prompt["excerpts"] == [{"id": 1, "text": "什么是队列？", "source": "数据结构课 · AI 讲义"}]
     assert len(prompt["history"]) == 8 and len(prompt["history"][0]["content"]) == 1200
     strict, _ = learning_api.document_answer(params, "/api")
     assert strict["explanation"] == "" and not strict["claims"]

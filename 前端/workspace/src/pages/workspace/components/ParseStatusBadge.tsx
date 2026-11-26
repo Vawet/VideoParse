@@ -4,6 +4,8 @@ import { useWorkspace } from "../hooks/use-workspace";
 const DOT = {
   uploading: "bg-muted-foreground",
   parsing: "bg-warning animate-live-pulse",
+  pausing: "bg-warning",
+  paused: "bg-muted-foreground",
   ready: "bg-primary",
   failed: "bg-destructive",
 } as const;
@@ -11,6 +13,8 @@ const DOT = {
 const TEXT = {
   uploading: "text-muted-foreground",
   parsing: "text-warning-soft-foreground",
+  pausing: "text-warning-soft-foreground",
+  paused: "text-muted-foreground",
   ready: "text-primary-soft-foreground",
   failed: "text-destructive-soft-foreground",
 } as const;
@@ -31,6 +35,8 @@ export function ParseStatusBadge() {
   const label = {
     uploading: `上传中 ${Math.round(uploadProgress)}%`,
     parsing: `解析中 ${Math.round(progress * 100)}%`,
+    pausing: "正在暂停",
+    paused: "已暂停",
     ready: "已完成",
     failed: "解析失败",
   }[status];

@@ -2,6 +2,8 @@ package org.videoparse;
 
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.*;
 import org.apache.rocketmq.client.producer.*;
@@ -10,7 +12,6 @@ import org.apache.rocketmq.common.message.Message;
 import org.slf4j.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -21,16 +22,16 @@ class JobDispatch {
     private static final String PARSE_TOPIC = "VideoParseAnalysis";
     private static final String RESULT_TOPIC = "VideoParseResults";
     private final Logger log = LoggerFactory.getLogger(getClass());
-    private final JdbcClient db;
+    private final DispatchOutbox outbox;
     private final JobRunner runner;
     private final AnalysisGraph graph;
     private final String nameserver, prefix;
     private DefaultMQProducer producer;
     private DefaultMQPushConsumer parser, publisher;
 
-    JobDispatch(JdbcClient db, JobRunner runner, AnalysisGraph graph,
+    JobDispatch(DispatchOutbox outbox, JobRunner runner, AnalysisGraph graph,
                 @Value("${ROCKETMQ_NAMESERVER}") String nameserver, @Value("${ROCKETMQ_PREFIX:}") String prefix) {
-        this.db=db; this.runner=runner; this.graph=graph; this.nameserver=nameserver; this.prefix=prefix;
+        this.outbox=outbox; this.runner=runner; this.graph=graph; this.nameserver=nameserver; this.prefix=prefix;
     }
 
     private DefaultMQPushConsumer subscribe(String group, String topic) throws Exception {
@@ -70,27 +71,34 @@ class JobDispatch {
         if (graph.enabled() && publisher == null) publisher = subscribe("vp-results", RESULT_TOPIC);
     }
 
-    record Dispatch(String jobId, String stage, int attempt) {}
-
     @Scheduled(fixedDelayString="${MQ_DISPATCH_MS:2000}")
     void send() {
         try {
             connect();
-            var pending = db.sql("""
-                SELECT d.job_id,d.stage,d.attempt FROM vp_dispatch d JOIN vp_job j ON j.id=d.job_id
-                WHERE (d.stage='parse' AND j.status IN ('queued','running'))
-                   OR (d.stage='graph' AND j.status='publishing' AND j.publish_after<=CURRENT_TIMESTAMP(3))
-                ORDER BY d.created_at LIMIT 32
-                """).query(Dispatch.class).list();
-            for (var row : pending) {
-                String topic = prefix + (row.stage().equals("parse") ? PARSE_TOPIC : RESULT_TOPIC);
-                var message = new Message(topic,row.stage(),row.jobId(),row.jobId().getBytes(StandardCharsets.UTF_8));
-                if (producer.send(message).getSendStatus() == SendStatus.SEND_OK) {
-                    db.sql("DELETE FROM vp_dispatch WHERE job_id=? AND stage=? AND attempt=?")
-                        .params(row.jobId(), row.stage(), row.attempt()).update();
-                }
+            relay(producer);
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        catch (Exception e) { log.warn("消息服务暂不可用，任务已保存在 MySQL: {}", e.getMessage()); }
+    }
+
+    void relay(DefaultMQProducer sender) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        for (int i=0; i<32 && deadline-System.nanoTime()>0; i++) {
+            String lease = UUID.randomUUID().toString();
+            var row = outbox.claim(lease);
+            if (row == null) return;
+            String topic = prefix + (row.stage().equals("parse") ? PARSE_TOPIC : RESULT_TOPIC);
+            var message = new Message(topic,row.stage(),row.jobId(),row.jobId().getBytes(StandardCharsets.UTF_8));
+            SendStatus status;
+            try { status = sender.send(message).getSendStatus(); }
+            catch (InterruptedException e) { throw e; } // The lease will expire.
+            catch (Exception e) {
+                log.warn("发送失败 {} {}，将重试 ({})",row.stage(),row.jobId(),e.getClass().getSimpleName());
+                outbox.defer(row,lease);
+                continue;
             }
-        } catch (Exception e) { log.warn("消息服务暂不可用，任务已保存在 MySQL: {}", e.getMessage()); }
+            if (status == SendStatus.SEND_OK) outbox.acknowledge(row,lease);
+            else outbox.defer(row,lease);
+        }
     }
 
     @PreDestroy synchronized void close() {

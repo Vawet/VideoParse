@@ -22,7 +22,7 @@ export function QuizTab() {
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="rounded-xl border border-border/70 bg-card/40 px-3.5 py-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="label-mono text-[9px]">01 · Mastery</span>
+          <span className="tool-heading">测验进度</span>
           <span className="text-[11px] text-muted-foreground">
             已答 {quiz.answeredCount} / {quiz.total} 题 · 正确 {quiz.correctCount} 题
           </span>

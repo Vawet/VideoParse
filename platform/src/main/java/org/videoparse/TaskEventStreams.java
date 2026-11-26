@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.springframework.stereotype.Service;
@@ -14,7 +15,7 @@ import org.springframework.stereotype.Service;
 /** Shares MySQL reads inside an instance. Each HTTP response owns its cursor and output stream. */
 @Service
 class TaskEventStreams {
-    private static final long POLL = TimeUnit.MILLISECONDS.toNanos(400);
+    private static final long POLL = TimeUnit.SECONDS.toNanos(3);
     private static final long HEARTBEAT = TimeUnit.SECONDS.toNanos(10);
     private static final int POLL_BATCH = 128;
     private static final byte[] KEEP_ALIVE = ": keep-alive\n\n".getBytes(StandardCharsets.UTF_8);
@@ -24,6 +25,11 @@ class TaskEventStreams {
     private volatile long checkAt = System.nanoTime();
 
     TaskEventStreams(JobMapper jobs) { this.jobs = jobs; }
+
+    void hint(String job) {
+        var feed = feeds.get(job);
+        if (feed != null) feed.changed.countDown();
+    }
 
     void write(JobMapper.Tail initial, long cursor, OutputStream out) throws IOException {
         String id = initial.id();
@@ -52,7 +58,7 @@ class TaskEventStreams {
                     out.flush();
                     heartbeatAt = System.nanoTime() + HEARTBEAT;
                 }
-                TimeUnit.NANOSECONDS.sleep(batch.checkAt() - System.nanoTime());
+                batch.changed().await(batch.checkAt() - System.nanoTime(), TimeUnit.NANOSECONDS);
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -66,15 +72,18 @@ class TaskEventStreams {
             this(event.id(), ("id: " + event.id() + "\ndata: " + event.payload() + "\n\n").getBytes(StandardCharsets.UTF_8));
         }
     }
-    private record Batch(List<Frame> events, boolean finished, long checkAt) {}
+    private record Batch(List<Frame> events, boolean finished, long checkAt, CountDownLatch changed) {}
 
     // The first idle reader at each deadline checks all watched jobs. No timer or SQL work
     // remains when the last reader disconnects. Only tail metadata crosses feed boundaries.
-    private void refreshTails() throws InterruptedException {
-        if (System.nanoTime() - checkAt < 0) return;
+    private void refreshTails(String job, Feed feed, boolean hinted) throws InterruptedException {
+        if (!hinted && System.nanoTime() - checkAt < 0) return;
         pollLock.lockInterruptibly();
         try {
-            if (System.nanoTime() - checkAt < 0) return;
+            if (System.nanoTime() - checkAt < 0) {
+                if (hinted) refreshBatch(Map.of(job, feed));
+                return;
+            }
             try {
                 var pending = new HashMap<String, Feed>();
                 for (var entry : feeds.entrySet()) {
@@ -104,6 +113,7 @@ class TaskEventStreams {
         private final ReentrantLock lock = new ReentrantLock();
         private int readers; // Only modified by feeds.compute.
         private volatile JobMapper.Tail tail;
+        private volatile CountDownLatch changed = new CountDownLatch(1);
         private long pageFrom;
         private List<Frame> page = List.of();
 
@@ -113,14 +123,17 @@ class TaskEventStreams {
             lock.lockInterruptibly();
             try {
                 if (!page.isEmpty() && after >= pageFrom && after < page.getLast().id())
-                    return new Batch(page, false, 0);
+                    return new Batch(page, false, 0, changed);
                 var snapshot = tail;
                 if (snapshot != null && !snapshot.finished() && after >= snapshot.lastEvent()) {
-                    refreshTails();
+                    boolean hinted = changed.getCount() == 0;
+                    // Arm the next wake-up before reading SQL so a concurrent commit is observed.
+                    if (hinted) changed = new CountDownLatch(1);
+                    refreshTails(id, this, hinted);
                     snapshot = tail;
                 }
                 if (snapshot == null || after >= snapshot.lastEvent())
-                    return new Batch(List.of(), snapshot == null || snapshot.finished(), checkAt);
+                    return new Batch(List.of(), snapshot == null || snapshot.finished(), checkAt, changed);
 
                 var frames = jobs.events(id, after).stream().map(Frame::new).toList();
                 // Replaying an old cursor must not evict the page being consumed by live readers.
@@ -128,7 +141,7 @@ class TaskEventStreams {
                     page = frames;
                     pageFrom = after;
                 }
-                return new Batch(frames, false, checkAt);
+                return new Batch(frames, false, checkAt, changed);
             } finally {
                 lock.unlock();
             }

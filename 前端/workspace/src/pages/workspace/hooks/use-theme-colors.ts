@@ -18,15 +18,15 @@ export type ThemeColors = {
 };
 
 const FALLBACK: ThemeColors = {
-  background: "hsl(60 6% 5%)",
-  card: "hsl(60 5% 8%)",
-  foreground: "hsl(45 24% 93%)",
-  mutedForeground: "hsl(45 9% 63%)",
-  primary: "hsl(74 90% 62%)",
-  primaryForeground: "hsl(60 25% 6%)",
-  gold: "hsl(43 62% 62%)",
-  soft: "hsl(74 38% 15%)",
-  border: "hsl(48 8% 18%)",
+  background: "hsl(240 14% 97%)",
+  card: "hsl(0 0% 100%)",
+  foreground: "hsl(236 18% 12%)",
+  mutedForeground: "hsl(237 7% 41%)",
+  primary: "hsl(248 58% 51%)",
+  primaryForeground: "hsl(0 0% 100%)",
+  gold: "hsl(251 47% 45%)",
+  soft: "hsl(245 71% 95%)",
+  border: "hsl(238 15% 88%)",
 };
 
 function read(root: HTMLElement, name: string, fallback: string): string {

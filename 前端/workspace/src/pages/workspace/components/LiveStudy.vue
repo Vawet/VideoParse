@@ -112,13 +112,18 @@ onBeforeUnmount(()=>abort.abort());
 </template>
 
 <style scoped>
-.study { max-width:48rem; margin:auto; font-size:.85rem; }
-h2 { font-size:1rem; font-weight:600; margin-bottom:1rem; }
-h3 { font-weight:600; margin-bottom:.4rem; }
-form { display:flex; align-items:center; flex-wrap:wrap; gap:.65rem; }
-input,select,button { border:1px solid hsl(var(--border)); background:hsl(var(--background)); padding:.4rem .65rem; border-radius:.45rem; }
-input[type=number]{width:5rem;}
-button {cursor:pointer; color:hsl(var(--primary));} button:disabled {opacity:.55;}
-article {border-top:1px solid hsl(var(--border)); margin-top:1rem; padding-top:1rem;}
-article p {margin:.4rem 0;white-space:pre-wrap;} article button {margin-right:.3rem;margin-top:.3rem;}
+.study { max-width: 48rem; margin: auto; font-size: .9rem; }
+h2 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.035em; margin-bottom: 1rem; }
+h3 { font-weight: 600; margin-bottom: .5rem; }
+form { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+input, select, button { border: 1px solid hsl(var(--input)); background: hsl(var(--card)); padding: .48rem .85rem; border-radius: .65rem; max-width: 100%; }
+input[type=number] { width: 5rem; }
+button { cursor: pointer; color: hsl(var(--primary)); transition: background-color .18s; }
+button:hover { background: hsl(var(--primary-soft)); }
+form > button { border-color: transparent; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+form > button:hover { background: hsl(var(--primary) / .9); }
+button:disabled { opacity: .55; }
+article { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 1rem; padding: 1rem; margin-top: 1rem; }
+article p { margin: .4rem 0; white-space: pre-wrap; }
+article button { margin-right: .3rem; margin-top: .3rem; }
 </style>

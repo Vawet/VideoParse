@@ -27,22 +27,26 @@ class AnalysisFlow {
         "build_visual_transcript", "在无语音时用画面笔记重建时间轴");
 
 
-    AnalysisFlow(ObjectMapper json,@Value("${PLATFORM_AI_KEY:}") String key,
+    AnalysisFlow(ObjectMapper json,ApiUsage usage,@Value("${PLATFORM_AI_KEY:}") String key,
                  @Value("${PLATFORM_AI_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}") String base,
                  @Value("${PLATFORM_AI_MODEL:qwen-plus}") String name) {
         this.json=json;
-        planner=key.isBlank()?null:OpenAiChatModel.builder().baseUrl(base).apiKey(key).modelName(name)
+        planner=key.isBlank()?null:OpenAiChatModel.builder().httpClientBuilder(new UsageHttpClient(usage,json,name)).baseUrl(base).apiKey(key).modelName(name)
             .maxRetries(0).timeout(Duration.ofSeconds(40)).build();
     }
     private class Run {
         final MediaToolSession session;
         final Consumer<String> emit;
+        final Runnable checkpoint;
         int step=0;
-        Run(MediaToolSession session,Consumer<String> emit){this.session=session;this.emit=emit;}
+        Run(MediaToolSession session, Consumer<String> emit, Runnable checkpoint) {
+            this.session=session; this.emit=emit; this.checkpoint=checkpoint;
+        }
         JsonNode tool(String name,Map<String,Object> args) throws Exception {
             return tool(name,args,false);
         }
         JsonNode tool(String name,Map<String,Object> args,boolean repair) throws Exception {
+            checkpoint.run();
             emit.accept(json.writeValueAsString(Map.of("type","tool_start","step",++step,"tool",name,"args",args)));
             var obs=session.call(Map.of("tool",name,"args",args,"repair",repair),Duration.ofMinutes(45));
             boolean ok=!obs.has("error") && obs.path("ok").asBoolean(true);
@@ -73,9 +77,9 @@ class AnalysisFlow {
         return Optional.of(call.name());
     }
 
-    void run(ProcessBuilder pb,Consumer<String> emit) throws Exception {
+    void run(ProcessBuilder pb,Consumer<String> emit,Runnable checkpoint) throws Exception {
         try(var session=new MediaToolSession(pb,json)) {
-            var run=new Run(session,emit);
+            var run=new Run(session,emit,checkpoint);
             var info=run.tool("get_video_info");
             if(info.has("error")) throw new IllegalStateException("视频无法解码");
             boolean speech=info.path("has_audio").asBoolean() && run.tool("transcribe").path("segments").asInt()>0;
@@ -93,6 +97,7 @@ class AnalysisFlow {
             check=run.tool("validate_result");
             var attempted=new HashSet<String>();
             for(int round=0;round<2 && planner!=null && !check.path("issues").isEmpty();round++) {
+                checkpoint.run();
                 String action;
                 try {
                     var selected=chooseRepair(check.path("issues"),attempted);

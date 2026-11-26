@@ -75,7 +75,9 @@ def test_search_failure(monkeypatch):
     ({"web": {"results": [None, {"url": "https://example.org", "title": "<b>Docs</b>",
                                   "description": "Use &lt;T&gt;."}]}}, 200, ["Docs"]),
 ])
-def test_brave_result_contract(monkeypatch, payload, status, titles):
+def test_brave_result_contract(monkeypatch, tmp_path, payload, status, titles):
+    from app import config
+    monkeypatch.setattr(config, "DATABASE_URL", "sqlite:///" + str(tmp_path / "study.db"))
     monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "fixture")
     response = web_search.requests.Response()
     response.status_code = 200

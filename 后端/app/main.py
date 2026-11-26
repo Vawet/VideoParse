@@ -15,10 +15,12 @@ import json
 import os
 import uuid
 
+from functools import partial
+
 from flask import Flask, Response, jsonify, make_response, request, send_from_directory
 from flask_cors import CORS
 
-from app import config, tasks, upload_gate, learning_api
+from app import api_usage, config, tasks, upload_gate, learning_api
 from app.agent import loop, tools
 from app.agent.state import Workspace
 from app.db import repo
@@ -38,6 +40,14 @@ def _base_url():
 
 def _fail(msg, code=200):
     return jsonify({"success": False, "error": msg}), code
+
+
+@app.get("/usage")
+def usage():
+    before = request.args.get("before", type=int)
+    response = jsonify(api_usage.page("local", before))
+    response.cache_control.no_store = True
+    return response
 
 
 # ------------------------------------------------------------------ 上传
@@ -95,10 +105,7 @@ def _resolve_video(data):
 
 
 def _start_analyze(ws):
-    running = tasks.find_running(ws.video_id)
-    if running:
-        return running  # 同一个视频不重复启动
-    return tasks.start_task(ws.video_id, lambda emit: loop.analyze_video(ws, emit))
+    return tasks.start_task(ws.video_id, partial(loop.analyze_video, ws), cooperative=True)
 
 
 @app.route("/analyze", methods=["POST"])
@@ -145,6 +152,18 @@ def task_status(task_id):
         return _fail("任务不存在", 404)
     return jsonify({"success": True, "status": task.status, "error": task.error,
                     "video_id": task.video_id, "events": len(task.events)})
+
+
+@app.post("/tasks/<task_id>/pause", defaults={"pause": True})
+@app.post("/tasks/<task_id>/resume", defaults={"pause": False})
+def control_task(task_id, pause):
+    task = tasks.get_task(task_id)
+    if not task:
+        return _fail("任务不存在", 404)
+    try:
+        return jsonify(success=True, status=task.control(pause))
+    except ValueError as error:
+        return _fail(str(error), 409)
 
 
 @app.route("/tasks/<task_id>/events", methods=["GET"])

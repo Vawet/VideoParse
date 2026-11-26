@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Pause, Play,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -26,8 +27,8 @@ export function ParseStatusBar() {
     isLive,
     failure,
     lecture,
-    available,
     cancelUpload,
+    canControlParse, controlPending, toggleParsePause,
     retry,
     clearProject,
   } = useWorkspace();
@@ -39,6 +40,7 @@ export function ParseStatusBar() {
   }, [status]);
 
   if (status === "empty") return null;
+  const active = status === "parsing" || status === "pausing" || status === "paused";
 
   return (
     <div className="shrink-0 space-y-2 px-3 pt-3 md:px-5">
@@ -67,23 +69,23 @@ export function ParseStatusBar() {
         </div>
       ) : null}
 
-      {status === "parsing" ? (
+      {active ? (
         <div className="rounded-xl border border-border/70 bg-card/50 px-3.5 py-2.5">
-          <div className="flex items-center gap-2.5">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden />
-            <span className="text-[13px] text-foreground">{activeStep?.label ?? "解析中"}</span>
-            <span className="font-mono text-[11px] tabular-nums text-primary">
-              {String(Math.round(progress * 100)).padStart(2, "0")}%
-            </span>
-            <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
-              {available.chapters ? "章节与问答已可用,其余标签仍在生成" : "正在准备第一批结果"}
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {status === "paused" ? <Pause size={15} className="text-primary"/> : <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden/>}
+            <span className="text-[13px] text-foreground">{status === "paused" ? "解析已暂停" : status === "pausing" ? "等待当前步骤保存" : activeStep?.label ?? "解析中"}</span>
+            <span className="font-mono text-[11px] tabular-nums text-primary">{Math.round(progress * 100)}%</span>
+            <div className="ml-auto"/>
+            {canControlParse && <Button size="sm" variant="outline" className="h-8 rounded-full" disabled={controlPending || status === "pausing"} onClick={toggleParsePause}>
+              {status === "paused" ? <Play size={14}/> : <Pause size={14}/>}
+              {status === "paused" ? "继续解析" : status === "pausing" ? "正在暂停" : "暂停解析"}
+            </Button>}
             <button
               type="button"
               onClick={() => setOpen((value) => !value)}
               className="inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-1 transition-colors duration-200 ease-smooth hover:bg-accent"
             >
-              <span className="label-mono text-[8px]">Timeline</span>
+              <span className="label-mono text-xs">解析进度</span>
               <ChevronDown
                 className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ease-smooth ${open ? "rotate-180" : ""}`}
                 aria-hidden
@@ -129,7 +131,7 @@ export function ParseStatusBar() {
           className="flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/50 px-3.5 py-2.5 text-left transition-colors duration-200 ease-smooth hover:border-border hover:bg-accent/40"
         >
           <CheckCircle2 className="h-3.5 w-3.5 text-primary" aria-hidden />
-          <span className="label-mono text-[9px] text-foreground">Parsed</span>
+          <span className="label-mono text-xs text-foreground">解析完成</span>
           <span className="truncate text-[11px] text-muted-foreground">
             {lecture.segments.length} 章节 · {lecture.slides.length} 幻灯片 · {lecture.stats.words} 字讲义
           </span>
@@ -143,7 +145,7 @@ export function ParseStatusBar() {
         </button>
       ) : null}
 
-      {(status === "parsing" || status === "ready" || status === "failed") && (
+      {(active || status === "ready" || status === "failed") && (
         <AgentTimeline open={open} onOpenChange={setOpen} />
       )}
     </div>

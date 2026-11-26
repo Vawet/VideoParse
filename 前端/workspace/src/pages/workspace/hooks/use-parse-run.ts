@@ -74,7 +74,9 @@ export const FAILURE_REASON =
   "讲义生成超时:模型返回的章节结构不完整(第 3 段缺少标题)。已完成的语音识别、关键帧与语义分段结果已保留,可以直接查看或重试。";
 
 export type ParseRunState = {
-  status: "idle" | "running" | "ready" | "failed";
+  status: "idle" | "running" | "pausing" | "paused" | "ready" | "failed";
+  setLiveState: (state: "running" | "pausing" | "paused") => void;
+  toggleDemoPause: () => void;
   progress: number;
   done: ParseStepId[];
   activeStepId: ParseStepId | null;
@@ -92,18 +94,16 @@ export type ParseRunState = {
 export function useParseRun(): ParseRunState {
   const [mode, setMode] = useState<RunMode | null>(null);
   const [runToken, setRunToken] = useState(0);
+  const resumeAt = useRef(0);
   const [progress, setProgress] = useState(0);
   const [done, setDone] = useState<ParseStepId[]>([]);
   const [status, setStatus] = useState<ParseRunState["status"]>("idle");
   const [failure, setFailure] = useState<ParseRunState["failure"]>(null);
 
   useEffect(() => {
-    if (!mode) return;
+    if (!mode || status !== "running") return;
     const total = RUN_MS[mode];
-    const startedAt = performance.now();
-    setStatus("running");
-    setFailure(null);
-    setProgress(0);
+    const startedAt = performance.now() - resumeAt.current * total;
 
     const timer = window.setInterval(() => {
       const ratio = Math.min(1, (performance.now() - startedAt) / total);
@@ -111,6 +111,7 @@ export function useParseRun(): ParseRunState {
 
       if (mode === "fail" && ratio >= FAIL_AT) {
         window.clearInterval(timer);
+        resumeAt.current = ratio;
         setStatus("failed");
         setFailure({ stepId: FAILURE_STEP, reason: FAILURE_REASON });
         return;
@@ -131,19 +132,31 @@ export function useParseRun(): ParseRunState {
     }, 140);
 
     return () => window.clearInterval(timer);
-  }, [mode, runToken]);
+  }, [mode, runToken, status]);
+
+  const toggleDemoPause = () => {
+    if (status === "running") {
+      resumeAt.current = progress;
+      setStatus("paused");
+    } else if (status === "paused") {
+      setStatus("running");
+    }
+  };
 
   const start = useCallback((nextMode: RunMode, options?: { reset?: boolean }) => {
     if (options?.reset) {
       setDone([]);
       setProgress(0);
-      setFailure(null);
+      resumeAt.current = 0;
     }
+    setStatus("running");
+    setFailure(null);
     setMode(nextMode);
     setRunToken((token) => token + 1);
   }, []);
 
   const reset = useCallback(() => {
+    resumeAt.current = 0;
     setMode(null);
     setDone([]);
     setProgress(0);
@@ -201,6 +214,8 @@ export function useParseRun(): ParseRunState {
   return {
     status,
     progress,
+    toggleDemoPause,
+    setLiveState: setStatus,
     done,
     activeStepId,
     failure,

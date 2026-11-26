@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
+from app import api_usage
 from app.services import grounded
 
 EN_MATERIAL = r"(?:my |our |this |the |uploaded )*(?:notes?|documents?|materials?|videos?|transcripts?|lectures?)\b"
@@ -84,10 +85,17 @@ def search(question):
     key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
     headers = {"User-Agent": "VideoParse/1.0 (public resource search)"}
     if key:
-        response = requests.get("https://api.search.brave.com/res/v1/web/search",
-                                params={"q": query, "count": 5}, headers={**headers, "X-Subscription-Token": key},
-                                timeout=(3, 8), allow_redirects=False)
-        response.raise_for_status()
+        row = api_usage.start("api.search.brave.com", "Brave Search")
+        try:
+            response = requests.get("https://api.search.brave.com/res/v1/web/search",
+                                    params={"q": query, "count": 5}, headers={**headers, "X-Subscription-Token": key},
+                                    timeout=(3, 8), allow_redirects=False)
+            response.raise_for_status()
+        except requests.RequestException:
+            api_usage.finish(row, "failed")
+            raise
+        price = api_usage.brave_price_micros() if 200 <= response.status_code < 300 else None
+        api_usage.finish(row, "estimated" if price is not None else "unreported", estimate=price)
         rows = _brave_rows(response.json())
     else:
         response = requests.get("https://html.duckduckgo.com/html/", params={"q": query}, headers=headers,

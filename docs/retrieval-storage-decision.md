@@ -24,3 +24,11 @@
 2. 对照当前全文加向量、ES 关键词加同一向量、当前方案加带来源的图邻居扩展。固定候选预算、最终 top-k 和生成模型。先测检索即可，不必为每次实验调用大模型。
 3. 按类别看 Hit@1、Recall@5、多跳题是否找齐全部必要证据，以及无答案题的错误引用。分开报告冷、热查询的 p95，记录索引构建与增量更新成本、删除可见延迟。另用两个用户的同名笔记、同题不同答案检查跨用户命中必须为零。
 4. 扩展组件的依据是它持续解决了哪类真实问题、代价是否可接受。单次小样本命中提高一题，无法估计生产收益或给出统一的数据量门槛。
+
+## Redis 的使用边界
+
+平台复用 Compose 中的 Redis。登录、注册的限流计数与一次性上传凭据已由 Redis 原子更新并设置过期时间。新增的两条路径使用同一连接配置，无需迁移已有视频或会话。[账号限流](../platform/src/main/java/org/videoparse/AccountController.java) · [上传凭据](../platform/src/main/java/org/videoparse/UploadGate.java)
+
+- **重复提问。** 文档和单视频检索使用同一套查询嵌入。读取顺序为 JVM 内存、Redis、嵌入模型，只有成功返回的有限数值向量会进入缓存。按模型空间、工作区、完整问题取摘要，Redis 只存摘要和向量。键使用摘要前三个十六进制字符，最多占 4096 个槽，每个值保留完整摘要用于匹配。不同问题落到同一槽时会重新计算。Redis 单条最多缓存 4096 维，两层缓存各自从写入起保留 10 分钟。Redis 超时后暂时跳过共享层，继续用原模型。同一 JVM 合并并发计算，不同 JVM 同时冷启动可能各算一次。[实现](../platform/src/main/java/org/videoparse/QueryEmbeddingCache.java) · [RedisVL 的嵌入缓存](https://redis.io/docs/latest/develop/ai/redisvl/user_guide/how_to_guides/embeddings_cache/) · [Azure Cache-Aside 模式](https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside)
+- **解析进度。** 每个 SSE 连接的游标始终指向 MySQL 的事件 ID。Redis 发布的消息只含任务 ID，唤醒订阅该任务的读者。首次连接先校验归属，漏通知或 Redis 重连时从 MySQL 补读。RocketMQ 继续负责分派解析工作。Redis 的 Pub/Sub 最多投递一次，持久事件表承担回放与补读。[唤醒与回放](../platform/src/main/java/org/videoparse/TaskEventStreams.java) · [Redis 投递语义](https://redis.io/docs/latest/develop/pubsub/#delivery-semantics)
+- **需要读取权威数据的路径。** 视频结果接口要在 Neo4j 快照损坏时立即返回 503，完整结果缓存会遮蔽损坏。知识库的候选、答案与引用取决于当前可见资料，命中查询向量缓存后仍执行带过滤的检索。API 用量金额与回执状态从 MySQL 账本读取，Redis 故障或重启不影响记账。[快照损坏回归](../platform/checks/publication_receipt.py) · [检索权限过滤](../platform/src/main/java/org/videoparse/DocumentSearch.java)

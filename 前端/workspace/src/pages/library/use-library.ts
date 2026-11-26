@@ -11,6 +11,7 @@ export function useLibrary() {
     staleTime: 15_000,
     retry: 1,
     refetchOnWindowFocus: "always",
-    refetchInterval: query => query.state.data?.documents.some(d => indexPending(d.indexState)) ? 3000 : false,
+    refetchInterval: query => query.state.data?.documents.some(d => indexPending(d.indexState)) ||
+      query.state.data?.videos.some(v => v.indexState === "pending") ? 3000 : false,
   });
 }

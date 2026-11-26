@@ -4,14 +4,14 @@ import { PlayerControls } from "./PlayerControls";
 
 /** The video surface and its transport — everything above the chapter list. */
 export function PlayerSurface() {
-  const { videoMode, videoUrl, posterImage, videoRef, reportMediaDuration, status } =
+  const { videoMode, videoUrl, posterImage, videoRef, reportMediaDuration } =
     useWorkspace();
   const { playing, toggle } = usePlayback();
   const hasFile = videoMode === "file" && Boolean(videoUrl);
 
   return (
     <div className="space-y-2.5">
-      <div className="frame-brackets">
+      <div className="player-frame">
         <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border/70 bg-gradient-stage">
           {hasFile ? (
             <video
@@ -32,7 +32,6 @@ export function PlayerSurface() {
                 className="h-full w-full object-cover opacity-90"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" aria-hidden />
-              <div className="vp-stage-grid absolute inset-0 opacity-60" aria-hidden />
               <button
                 type="button"
                 onClick={toggle}
@@ -50,7 +49,7 @@ export function PlayerSurface() {
               <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-2.5 py-1 backdrop-blur">
                 <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
                 <span className="label-mono text-[8px] text-foreground/80">
-                  {status === "empty" ? "Demo reel" : "Demo · no media file"}
+                  示例播放
                 </span>
               </span>
             </>

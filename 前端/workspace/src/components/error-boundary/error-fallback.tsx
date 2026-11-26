@@ -12,12 +12,12 @@ export const ErrorFallback = ({ error, resetErrorBoundary }: FallbackProps) => {
       role="alert"
       className="flex min-h-screen items-center justify-center bg-background p-6"
     >
-      <div className="w-full max-w-md text-center">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-7 text-center shadow-soft">
         <h1 className="mb-2 text-2xl font-semibold text-foreground">
-          Something went wrong
+          页面加载失败
         </h1>
         <p className="mb-6 text-muted-foreground">
-          An unexpected error occurred. Please try again.
+          请重试，或返回工作台重新打开。
         </p>
         {details && (
           <pre className="mb-6 whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-left text-sm text-muted-foreground">
@@ -25,9 +25,9 @@ export const ErrorFallback = ({ error, resetErrorBoundary }: FallbackProps) => {
           </pre>
         )}
         <div className="flex justify-center gap-3">
-          <Button onClick={resetErrorBoundary}>Try again</Button>
+          <Button onClick={resetErrorBoundary}>重试</Button>
           <Button variant="outline" asChild>
-            <a href="/">Back to home</a>
+            <a href="/">返回工作台</a>
           </Button>
         </div>
       </div>

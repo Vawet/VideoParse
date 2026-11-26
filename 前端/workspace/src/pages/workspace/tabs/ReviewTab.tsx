@@ -33,7 +33,7 @@ export function ReviewTab() {
       <div className="rounded-xl border border-border/70 bg-card/40 px-3.5 py-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <CalendarClock className="h-3 w-3 text-gold/80" aria-hidden />
-          <span className="label-mono text-[9px]">01 · Review</span>
+          <span className="tool-heading">复习进度</span>
           <span className="text-[11px] text-muted-foreground">
             剩余 {review.pending.length} 张 · 已掌握 {review.masteredCount} 张
           </span>

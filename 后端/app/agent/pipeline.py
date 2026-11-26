@@ -5,6 +5,7 @@
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 
 from app.agent import tools, checkpoints
 from app.agent.state import Workspace
@@ -17,11 +18,16 @@ LONG_VIDEO_SECONDS = 1800  # 超过 30 分钟：改用均匀取样，避免去�
 class _Runner:
     """执行单个工具并发出与 Agent 模式相同形状的事件，前端时间线无需区分模式。"""
 
-    def __init__(self, ws: Workspace, emit):
+    def __init__(self, ws: Workspace, emit, checkpoint):
+        self.checkpoint = checkpoint
         self.ws, self.emit, self.step = ws, emit, 0
         self.failures = []  # (tool, error)
 
     def run(self, name, **args):
+        self.checkpoint()
+        return self.execute(name, **args)
+
+    def execute(self, name, **args):
         self.step += 1
         step = self.step
         self.emit({"type": "tool_start", "step": step, "tool": name, "args": args})
@@ -39,9 +45,9 @@ class _Runner:
         return obs
 
 
-def run_pipeline(ws: Workspace, emit=lambda e: None):
+def run_pipeline(ws: Workspace, emit=lambda e: None, checkpoint=lambda: None):
     """跑完整流水线，返回需要 Agent 处理的问题清单（空列表表示一切正常）。"""
-    r = _Runner(ws, emit)
+    r = _Runner(ws, emit, checkpoint)
 
     info = r.run("get_video_info")
     if "error" in info:
@@ -56,9 +62,10 @@ def run_pipeline(ws: Workspace, emit=lambda e: None):
         r.emit({"type": "thought", "step": r.step, "text": "视频没有音轨，跳过语音相关步骤，改为只依赖画面。"})
 
     def text_tasks():
-        # 三个文本任务互不依赖，并行执行；事件仍按顺序发出
+        # Pause the group as one stage, after all previously started tools have drained.
+        checkpoint()
         with ThreadPoolExecutor(max_workers=3) as ex:
-            futures = [ex.submit(r.run, n) for n in ("analyze_structure", "generate_summary", "generate_mindmap")]
+            futures = [ex.submit(copy_context().run, r.execute, n) for n in ("analyze_structure", "generate_summary", "generate_mindmap")]
             for f in futures:
                 f.result()
 
