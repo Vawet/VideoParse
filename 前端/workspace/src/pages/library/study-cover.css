@@ -1,0 +1,54 @@
+.study-cover {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: clamp(185px, 21cqw, 260px);
+  padding: clamp(22px, 3.3cqw, 44px);
+  border-radius: 22px;
+  color: #faf9ff;
+  background: radial-gradient(ellipse at 78% 55%, #494066 0%, #29223f 33%, transparent 65%), linear-gradient(110deg, #171622, #24223e);
+  box-shadow: inset 0 0 0 1px #ffffff1e;
+}
+.study-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(#d0cafa40 .8px, transparent 1px) 0 0 / 13px 13px;
+  mask-image: linear-gradient(110deg, transparent 20%, black);
+}
+.study-cover[data-subject="library"] {
+  min-height: clamp(116px, 13cqw, 160px);
+  margin: 12px clamp(12px, 2cqw, 28px);
+  background: radial-gradient(ellipse at 76% 60%, #414768 0%, #282a44 38%, transparent 67%), #1b192a;
+}
+.study-cover canvas {
+  position: absolute;
+  inset: 0 2% 0 auto;
+  width: 49%;
+  height: 100%;
+  pointer-events: none;
+}
+.study-cover-copy { position: relative; width: 51%; min-width: 0; }
+.study-cover-copy h1 { font-size: clamp(28px, 4cqw, 52px); font-weight: 650; letter-spacing: -.055em; line-height: 1.18; }
+.study-cover-copy > div { max-width: 32em; font-size: 14px; line-height: 1.65; color: #d5d4e5; margin-top: 10px; }
+.study-cover[data-subject="library"] h1, .study-cover[data-compact="true"] h1 { font-size: clamp(23px, 3cqw, 38px); }
+.study-cover[data-compact="true"] { min-height: 112px; padding-block: 20px; }
+@media (prefers-reduced-motion: no-preference) {
+  .study-cover canvas { transition: transform .45s ease-out; }
+  @media (hover: hover) { .study-cover:hover canvas { transform: translateY(-2px) rotate(-1deg); } }
+}
+@container (max-width: 560px) {
+  .study-cover { min-height: 148px; padding: 18px; border-radius: 16px; }
+  .study-cover-copy { width: 58%; }
+  .study-cover-copy > div { font-size: 12px; margin-top: 6px; }
+  .study-cover canvas { width: 46%; right: 0; }
+  .study-cover[data-subject="library"] { margin: 7px 8px; min-height: 96px; padding-block: 12px; }
+}
+@media (max-height: 550px) {
+  .library-workspace .study-cover { min-height: 64px; margin-block: 4px; padding-block: 6px; }
+  .library-workspace .study-cover-copy > div { display: none; }
+}

@@ -8,6 +8,7 @@ import { api, uploadDocument } from "./api";
 import { indexPending, useLibrary } from "./use-library";
 import { ThemeToggle } from "../workspace/components/ThemeToggle";
 import { ReviewQueue } from "./ReviewQueue";
+import { StudyCover } from "./StudyCover";
 import { PasteMarkdown } from "./PasteMarkdown";
 
 import { DocumentChat, type Passage } from "./DocumentChat";
@@ -126,6 +127,9 @@ function LibraryPage({selected}: {selected: string}) {
       <input className="hidden" type="file" ref={picker} multiple accept=".md,.markdown" title="UTF-8 Markdown，每份上限 512 KiB" aria-label="选择 Markdown 文件"
         onChange={e => void upload(Array.from(e.target.files || []))}/>
     </header>
+    {!hasSource && <StudyCover subject="library" title="资料问答与复习">
+      从笔记中查找依据，把值得记住的段落加入复习。
+    </StudyCover>}
     <div role="group" aria-label="阅读视图" className="library-panel-switch shrink-0 gap-1 border-b border-border p-2">
       <Button variant={panel === "reader" ? "secondary" : "ghost"} size="sm" aria-pressed={panel === "reader"} onClick={() => setPanel("reader")}>文档与复习</Button>
       <Button variant={panel === "chat" ? "secondary" : "ghost"} size="sm" aria-pressed={panel === "chat"} onClick={() => setPanel("chat")}>AI 对话</Button>
@@ -134,12 +138,11 @@ function LibraryPage({selected}: {selected: string}) {
     <ResizablePanelGroup direction="horizontal" autoSaveId="library-document-chat" className="min-h-0 flex-1">
       <ResizablePanel id="library-reader" order={1} defaultSize={54} minSize={36} tagName="section"
         aria-label="文档与复习" className="library-reader flex min-h-0 min-w-0 flex-col">
-        <header className="shrink-0 border-b border-border px-5 pb-4 pt-5 lg:px-7">
-          <h1 className="truncate text-[28px] font-semibold tracking-tight" title={sourceDoc?.name}>{sourceDoc?.name ?? (selected ? "文档阅读" : "资料问答与复习")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{sourceDoc
-            ? sourceDoc.indexState === "ready" ? `已索引 · ${sourceDoc.chunks} 个段落` : indexPending(sourceDoc.indexState)
-              ? `正在建立索引 · ${sourceDoc.indexedChunks}/${sourceDoc.chunks}` : "向量索引失败，可使用全文检索"
-            : "从笔记中查找依据，把值得记住的段落加入复习。"}</p>
+        <header hidden={!hasSource && !library.isError && !(library.isSuccess && !docs.length)}
+          className="shrink-0 border-b border-border px-5 pb-4 pt-5 lg:px-7">
+          {hasSource && <h1 className="truncate text-[28px] font-semibold tracking-tight" title={sourceDoc?.name}>{sourceDoc?.name ?? "文档阅读"}</h1>}
+          {sourceDoc && <p className="mt-1 text-sm text-muted-foreground">{sourceDoc.indexState === "ready" ? `已索引 · ${sourceDoc.chunks} 个段落` : indexPending(sourceDoc.indexState)
+            ? `正在建立索引 · ${sourceDoc.indexedChunks}/${sourceDoc.chunks}` : "向量索引失败，可使用全文检索"}</p>}
           {sourceDoc?.indexState === "error" && <button className="text-xs text-primary underline" onClick={() => api("/"+sourceDoc.id+"/retry",{method:"POST"}).then(()=>library.refetch()).catch(e=>setError(e.message))}>重试索引</button>}
           {!selected && !docs.length && library.isSuccess && <p className="mt-2 text-xs text-muted-foreground">支持 UTF-8 Markdown，每份上限 512 KiB。</p>}
           {library.isError && <button type="button" className="mt-3 text-sm text-primary underline" onClick={() => void library.refetch()}>资料库读取失败，重试</button>}
