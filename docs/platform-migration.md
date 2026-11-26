@@ -44,7 +44,7 @@ V7 迁移保留旧数据，将缺少归属的资源设为私有待分配。管�
 
 V10 升级会补登已有成功任务的视频，以及平台任务出现前已标记为 analyzed 的视频。失败或进行中的首次解析不会归档。旧资源缺少 owner_id 时，需先确认归属；浏览器清除 Cookie 后会进入新的工作区。
 
-本机桌面平台还能按所选视频迁入旧工作区。在「视频 → 迁入本机旧版视频」选择旧版 `后端/app/outputs/*_result.json`，从项目根目录运行页面生成的命令。工具从旧 SQLite 读取标题、时长和字幕（只有完整解析文件的记录会用导图标题），复制原片、已有帧和工作区 JSON，迁入字幕，按当前访客创建视频并通过现有图发布队列写入 Neo4j。迁移需要正在运行的本机 MySQL、图发布 worker 和 Neo4j。同一访客重复运行会复用任务或已发布结果。其他部署可在后端环境设置 `DATABASE_URL` 和 `DATA_ROOT`，运行 `python -m app.import_archived_video --source 旧工作目录 --workspace 目标访客编号 -- 视频编号`。
+管理员可从项目根目录运行 `./infra/platform/import-local-videos.sh --workspace 目标账号的工作区编号 -- 视频编号`，将本机旧版解析结果迁入指定账号。迁移需要本机 MySQL、图发布 worker 和 Neo4j。同一账号重复迁入同一视频会复用已有任务或结果。
 
 ### Markdown 文档
 

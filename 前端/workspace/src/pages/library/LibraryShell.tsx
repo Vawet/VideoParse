@@ -9,7 +9,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { PasteMarkdown } from "./PasteMarkdown";
 import { LibraryItemDialog, type LibraryAction } from "./LibraryItemDialog";
 import { WorkspaceAccount } from "./WorkspaceAccount";
-import { LegacyImport } from "./LegacyImport";
 import Workspace from "../workspace";
 
 const row = "flex min-h-9 min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium outline-offset-1 hover:bg-sidebar-accent focus-visible:outline-ring";
@@ -113,7 +112,6 @@ function LibraryList({onSelect}: {onSelect?: () => void}) {
     </div>
     <WorkspaceAccount/>
     {action && <LibraryItemDialog action={action} onClose={() => setAction(null)} onSaved={finishAction}/>}
-    <div className="px-5 pb-5"><LegacyImport/></div>
   </nav>;
 }
 
