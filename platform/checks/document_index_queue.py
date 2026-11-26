@@ -4,6 +4,8 @@ import os
 import time
 
 import requests
+
+from test_account import register
 from sqlalchemy import create_engine, text
 
 
@@ -34,7 +36,7 @@ def check_unconfigured(db, session, url, ready, pending, poll_ms):
 def run(base, database_url, unconfigured_poll_ms=None):
     url = base.rstrip("/") + "/v2/documents"
     with requests.Session() as session:
-        session.get(base.rstrip("/") + "/v2/session", timeout=5).raise_for_status()
+        register(session, base)
 
         def upload(name):
             response = session.post(url, files={"file": (name + ".md", "# " + name)}, timeout=10)

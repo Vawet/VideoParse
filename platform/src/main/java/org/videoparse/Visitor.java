@@ -57,14 +57,19 @@ class Visitor {
         }
     }
 
-    String start() {
-        if (id != null) return id;
-        token = newToken();
-        id = UUID.randomUUID().toString().replace("-","");
+    String createAccountOwner() {
+        // Registration adopts a still-valid legacy workspace atomically.
+        byte[] retiredToken = hash(newToken());
+        if (id != null) {
+            if (db.sql("UPDATE vp_visitor SET token_hash=? WHERE id=? AND token_hash=? AND expires_at>UTC_TIMESTAMP()")
+                    .params(retiredToken,id,hash(token)).update() != 1)
+                throw new ResponseStatusException(HttpStatus.CONFLICT,"工作区身份已变化，请刷新");
+            return id;
+        }
+        String owner = UUID.randomUUID().toString().replace("-","");
         db.sql("INSERT INTO vp_visitor(id,token_hash,expires_at) VALUES(?,?,UTC_TIMESTAMP()+INTERVAL 365 DAY)")
-            .params(id,hash(token)).update();
-        cookie(token,Duration.ofDays(365));
-        return id;
+            .params(owner,retiredToken).update();
+        return owner;
     }
 
     static String newToken() {
@@ -85,7 +90,7 @@ class Visitor {
     }
 
     String id() {
-        if (id == null) throw missing();
+        if (username == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录");
         return id;
     }
     String workerToken() { return token; }
@@ -123,7 +128,7 @@ class SessionController {
     private final Visitor visitor;
     SessionController(Visitor visitor) { this.visitor = visitor; }
     @GetMapping("/v2/session") java.util.Map<String,Object> session() {
-        return java.util.Map.of("success",true,"workspace_id",visitor.start(),
+        return java.util.Map.of("success",true,"workspace_id",visitor.username() == null ? "" : visitor.id(),
             "username",java.util.Objects.toString(visitor.username(),""));
     }
 }

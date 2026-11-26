@@ -11,6 +11,8 @@ import uuid
 
 import requests
 
+from test_account import register
+
 
 def run(base, target):
     backend = Path(__file__).resolve().parents[2] / "后端"
@@ -24,6 +26,7 @@ def run(base, target):
         "file_only": [("archived original", "frame_note", 6, 7)],
     }
     with requests.Session() as session, TemporaryDirectory() as temp:
+        register(session, base)
         response = session.get(base + "/v2/session", timeout=5)
         response.raise_for_status()
         owner = response.json()["workspace_id"]

@@ -186,7 +186,7 @@ my-react-app/
 | 薄弱点 / 复习计划 | `GET /review/weak`、`POST /review/plan`、`POST /review/done` | 每题只看最近一次作答；计划骨架由代码按考试日期/每日时长排程 |
 | 教师备课 | `POST /teach/plan`、`POST /teach/plan/<id>/revise`、`GET /teach/plan/<id>` | 大纲每个要点带证据，环节分钟数之和严格等于课时；多版本；前端用 pptxgenjs 导出 |
 
-学习者用匿名 `client_id`（浏览器 localStorage）关联答题记录，无需登录。
+公开部署使用 [Spring 平台](docs/platform-migration.md)。访客可观看内置示例，上传、问答和复习需要登录。平台从会话取得账号 ID，并按此 ID 校验资料归属。本机单用户 Flask 开发模式仍使用浏览器的 `client_id`。
 
 ### 新增环境变量
 

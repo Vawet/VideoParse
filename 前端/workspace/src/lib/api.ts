@@ -11,25 +11,31 @@ let username = "";
 let sessionRequest: Promise<void> | undefined;
 const transientWorkspace = Math.random().toString(36).slice(2);
 
-export function openWorkspace(): Promise<void> {
-  if (!platform || workspaceId) return Promise.resolve();
+export function loadWorkspace(refresh: boolean): Promise<void> {
+  if (!platform || (!refresh && workspaceId)) return Promise.resolve();
   if (!sessionRequest) {
     const load = async () => {
       const session = await request<{ workspace_id: string; username?: string }>("/v2/session", {
         cache: "no-store", signal: AbortSignal.timeout(5000),
       });
+      if (workspaceId && workspaceId !== session.workspace_id) {
+        window.location.reload();
+        throw new Error("账号已切换");
+      }
       workspaceId = session.workspace_id;
       username = session.username || "";
     };
-    // Serialize the first Set-Cookie across tabs opened at the same time.
-    sessionRequest = (navigator.locks ? navigator.locks.request("vp-session:" + API_BASE, load) : load())
-      .then(() => undefined).finally(() => { sessionRequest = undefined; });
+    sessionRequest = load().finally(() => { sessionRequest = undefined; });
   }
   return sessionRequest;
 }
 
+export function openWorkspace() {
+  return loadWorkspace(false);
+}
+
 export async function workspaceUsername() {
-  await openWorkspace();
+  await loadWorkspace(true);
   return username;
 }
 
@@ -44,7 +50,8 @@ export async function changeAccount(action: "register" | "login" | "logout", cre
     if (action !== "register") localStorage.removeItem("vp:recent-tasks:"+API_BASE+":"+workspaceId);
     localStorage.setItem(identityEvent, String(Date.now()));
   } catch { /* Account changes still apply when browser storage is unavailable. */ }
-  window.location.replace("/library");
+  if (action === "logout") window.location.replace("/");
+  else window.location.reload();
 }
 
 if (platform) {
@@ -73,6 +80,9 @@ type Envelope<T> = { success: boolean; error?: string } & T;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, init);
+  if (platform && workspaceId && response.status === 401 && !path.startsWith("/v2/account/")) {
+    window.location.reload();
+  }
   const data = (await response.json().catch(() => null)) as Envelope<T> | null;
   if (!data) throw new Error(`后端无响应(${response.status})`);
   if (!data.success) throw new Error(data.error || `请求失败(${response.status})`);

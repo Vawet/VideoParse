@@ -33,4 +33,4 @@ CMD ["/opt/java/openjdk/bin/java","-jar","/srv/platform.jar"]
 FROM media AS legacy
 # 任务状态保存在进程内存里（app/tasks.py），所以必须单 worker + 多线程；
 # timeout 调大，避免同步 /analyze 被杀。
-CMD ["sh", "-c", "gunicorn app.main:app -b 0.0.0.0:${PORT} --workers 1 --threads 8 --timeout 1800"]
+CMD ["sh", "-c", "gunicorn app.main:app -b 127.0.0.1:${PORT} --workers 1 --threads 8 --timeout 1800"]

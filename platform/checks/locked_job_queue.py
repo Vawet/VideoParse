@@ -5,6 +5,8 @@ import time
 import uuid
 
 import requests
+
+from test_account import register
 from sqlalchemy import create_engine, text
 
 
@@ -12,6 +14,7 @@ def run(base, database):
     engine = create_engine(database)
     try:
         with requests.Session() as session, engine.connect() as holder:
+            register(session, base)
             visitor = session.get(base + "/v2/session", timeout=5)
             visitor.raise_for_status()
             owner = visitor.json()["workspace_id"]

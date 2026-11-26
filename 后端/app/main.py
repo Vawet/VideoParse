@@ -324,4 +324,4 @@ def get_frame_image(video_id, filename):
 
 if __name__ == "__main__":
     # use_reloader=False：避免代码热重载杀掉正在后台运行的 Agent 任务
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False, threaded=True)
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False, threaded=True)

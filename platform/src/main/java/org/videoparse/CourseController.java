@@ -16,7 +16,7 @@ class CourseController {
         if(title==null || title.isBlank() || title.strip().length()>200)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"课程名称需要 1 至 200 字");
         String id=UUID.randomUUID().toString().replace("-","");
-        db.sql("INSERT INTO courses(id,name,created_at,owner_id) VALUES(?,?,UTC_TIMESTAMP(),?)").params(id,title.strip(),visitor.start()).update();
+        db.sql("INSERT INTO courses(id,name,created_at,owner_id) VALUES(?,?,UTC_TIMESTAMP(),?)").params(id,title.strip(),visitor.id()).update();
         return id;
     }
     @PostMapping("/courses") Map<String,Object> add(@RequestBody Map<String,String> b){
@@ -24,7 +24,7 @@ class CourseController {
         return Map.of("success",true,"course",Map.of("name",title.strip(),"id",id));
     }
     @GetMapping("/courses") Map<String,Object> list(){
-        var rows=db.sql("SELECT c.id,c.name,COUNT(v.id) video_count FROM courses c LEFT JOIN videos v ON v.course_id=c.id AND v.owner_id=c.owner_id WHERE c.owner_id=? GROUP BY c.id,c.name ORDER BY c.created_at,c.id").param(visitor.start()).query().listOfRows();
+        var rows=db.sql("SELECT c.id,c.name,COUNT(v.id) video_count FROM courses c LEFT JOIN videos v ON v.course_id=c.id AND v.owner_id=c.owner_id WHERE c.owner_id=? GROUP BY c.id,c.name ORDER BY c.created_at,c.id").param(visitor.id()).query().listOfRows();
         return Map.of("success",true,"courses",rows);
     }
     @GetMapping("/courses/{id}") Map<String,Object> course(@PathVariable String id){

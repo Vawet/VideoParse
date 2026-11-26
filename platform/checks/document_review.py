@@ -5,12 +5,14 @@ import time
 
 import requests
 
+from test_account import register
+
 
 def run(base):
     api = base.rstrip("/") + "/v2"
     owner, other = requests.Session(), requests.Session()
     for session in (owner, other):
-        session.get(api + "/session", timeout=10).raise_for_status()
+        register(session, base)
 
     sample = "# 记忆\n从记忆中提取有助于学习。\n## 间隔\n把练习分散到多天。"
     response = owner.post(api + "/documents", files={"file": ("复习.md", sample.encode())}, timeout=10)

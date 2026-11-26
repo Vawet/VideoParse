@@ -5,6 +5,8 @@ import time
 
 import requests
 
+from test_account import register
+
 NOTES = {
     "学习方法.md": "# 学习方法\n\n## 间隔复习\n把每次回忆之间的时间逐渐拉长，可以提高长期保持率。\n\n"
                "## 费曼法\n向初学者讲解可以发现理解中的漏洞。\n```md\n# 代码里的标题\n```\n",
@@ -34,8 +36,9 @@ def run(base, worker_offline=False):
     def ask(question, doc=None):
         return api(owner, "POST", "documents/ask", json={"question": question, "documentId": doc})
 
+    register(owner, base)
+    register(outsider, base)
     visitor = api(owner, "GET", "session")["workspace_id"]
-    api(outsider, "GET", "session")
     # Seed a relevant passage belonging to someone else, so an unscoped search can return it.
     foreign = upload(outsider, "私人.md", "# 间隔复习\n间隔复习如何让知识更长久地保存在记忆中？")
     docs = {name: upload(owner, name, body)["id"] for name, body in NOTES.items()}

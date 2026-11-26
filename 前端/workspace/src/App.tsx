@@ -1,3 +1,4 @@
+import { AccountBoundary } from "./pages/library/AccountBoundary";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -24,7 +25,9 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <RouterProvider router={router} />
+          {import.meta.env.VITE_PLATFORM === "true"
+            ? <AccountBoundary><RouterProvider router={router}/></AccountBoundary>
+            : <RouterProvider router={router}/>}
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

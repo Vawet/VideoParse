@@ -1,10 +1,12 @@
-"""Exercise private uploads and courses using two fresh visitors in a disposable platform instance."""
+"""Exercise private uploads and courses using two fresh accounts in a disposable platform instance."""
 import argparse
 from hashlib import sha256
 import requests
 
+from test_account import register
 
-def check(base):
+
+def check(base, credentials_a=None, credentials_b=None):
     base = base.rstrip("/")
     a, b = requests.Session(), requests.Session()
 
@@ -16,6 +18,8 @@ def check(base):
     def workspace(session):
         return call(session, "GET", "/v2/session").json()["workspace_id"]
 
+    register(a, base, credentials_a)
+    register(b, base, credentials_b)
     owner, other = workspace(a), workspace(b)
     assert owner != other and workspace(a) == owner
     payload = b"private upload regression fixture"
@@ -50,4 +54,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("api_base")
     check(parser.parse_args().api_base)
-    print("两个访客的上传、视频和课程隔离验证通过")
+    print("两个账号的上传、视频和课程隔离验证通过")

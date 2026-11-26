@@ -1,6 +1,5 @@
 import { createRoot } from "react-dom/client";
 import "./setup";
-import { openWorkspace } from "./lib/api";
 import { bootstrapGeneratedSiteAnalytics } from "./analytics.ts";
 import App from "./App.tsx";
 import { ErrorBoundary } from "react-error-boundary";
@@ -17,8 +16,8 @@ if (!container) {
 bootstrapGeneratedSiteAnalytics();
 
 const root = createRoot(container, { onCaughtError: reportCaughtError });
-void openWorkspace().catch(() => { /* The bundled demo also works offline. */ }).then(() => root.render(
+root.render(
   <ErrorBoundary FallbackComponent={ErrorFallback}>
     <App />
   </ErrorBoundary>,
-));
+);

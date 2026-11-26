@@ -5,13 +5,15 @@ import sys
 from uuid import uuid4
 
 import requests
+
+from test_account import register
 from sqlalchemy import create_engine, text
 
 
 def run(base, database_url):
     documents = base.rstrip("/") + "/v2/documents"
     with requests.Session() as user:
-        user.get(base.rstrip("/") + "/v2/session", timeout=10).raise_for_status()
+        register(user, base)
         result = user.post(documents, files={"file": ("分页.md", "游标分页按排序键继续。".encode())}, timeout=10)
         result.raise_for_status()
         doc = result.json()["document"]["id"]

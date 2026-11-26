@@ -8,11 +8,14 @@ import time
 import uuid
 
 import requests
+
+from test_account import register
 from sqlalchemy import create_engine, text
 
 
 def visitor(base):
     with requests.Session() as session:
+        register(session, base)
         response = session.get(base + "/v2/session", timeout=5)
         response.raise_for_status()
         return response.json()["workspace_id"], session.cookies.get_dict()
@@ -91,6 +94,8 @@ def run(base, database_url, task_count=1):
         with engine.begin() as conn:
             for table, key, values in [("vp_event", "job_id", tasks), ("vp_job", "id", tasks), ("videos", "id", videos)]:
                 conn.execute(text(f"DELETE FROM {table} WHERE {key}=:id"), [{"id": value} for value in values])
+            for table in ("vp_account_session", "vp_account"):
+                conn.execute(text(f"DELETE FROM {table} WHERE owner_id IN (:a,:b)"), {"a": owners[0][0], "b": owners[1][0]})
             conn.execute(text("DELETE FROM vp_visitor WHERE id IN (:a,:b)"), {"a": owners[0][0], "b": owners[1][0]})
         engine.dispose()
 

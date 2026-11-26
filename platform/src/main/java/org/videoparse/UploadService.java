@@ -39,7 +39,7 @@ class UploadService {
         gate.consume(m.token());
         String id=UUID.randomUUID().toString();
         db.sql("INSERT INTO vp_upload(id,video,filename,bytes,hashes,owner_id) VALUES(?,?,?,?,?,?)")
-          .params(id,UUID.randomUUID().toString(),m.filename(),m.bytes(),json.writeValueAsString(m.hashes()),visitor.start()).update();
+          .params(id,UUID.randomUUID().toString(),m.filename(),m.bytes(),json.writeValueAsString(m.hashes()),visitor.id()).update();
         return id;
     }
     List<Integer> parts(UUID id) {

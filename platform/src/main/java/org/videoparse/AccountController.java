@@ -71,16 +71,13 @@ class AccountController {
 
     @PostMapping("/register")
     Map<String,Object> register(@RequestBody Credentials c,HttpServletRequest req) {
-        String owner=visitor.id();
         if (visitor.username()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"请先退出当前账号");
         String user=credentials(c,req);
         byte[] salt=new byte[16]; RANDOM.nextBytes(salt);
         byte[] verifier=derive(c.password(),salt);
         try {
             String token=tx.execute(status->{
-                if (db.sql("UPDATE vp_visitor SET token_hash=? WHERE id=? AND token_hash=? AND expires_at>UTC_TIMESTAMP()")
-                    .params(Visitor.hash(Visitor.newToken()),owner,Visitor.hash(visitor.workerToken())).update()!=1)
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,"工作区身份已变化，请刷新");
+                String owner=visitor.createAccountOwner();
                 db.sql("INSERT INTO vp_account(owner_id,username,salt,password_hash) VALUES(?,?,?,?)")
                     .params(owner,user,salt,verifier).update();
                 return session(owner);

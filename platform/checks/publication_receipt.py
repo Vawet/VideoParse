@@ -5,6 +5,8 @@ import time
 import uuid
 
 import requests
+
+from test_account import register
 from sqlalchemy import create_engine, text
 
 
@@ -17,6 +19,7 @@ def run(base, neo4j, database):
         assert reply.json()["errors"] == []
 
     session = requests.Session()
+    register(session, base)
     response = session.get(base + "/v2/session", timeout=5)
     response.raise_for_status()
     owner = response.json()["workspace_id"]
