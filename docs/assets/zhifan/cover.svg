@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 384" role="img" aria-labelledby="title description">
+<title id="title">知返 ZHIFAN · 视频与文档学习工作台</title>
+<desc id="description">深色片头右侧，一条紫色折带围着荧光绿播放键折成字母 Z。下方时间尺标出示例课程中的三个视频时刻。</desc>
+<defs>
+  <linearGradient id="top" x1="0" y1="0" x2=".9" y2="1" gradientUnits="objectBoundingBox">
+  <stop stop-color="#faf7ff"/><stop offset=".43" stop-color="#d1bcff"/><stop offset="1" stop-color="#9779f1"/>
+</linearGradient>
+<linearGradient id="fold" x1="0" y1=".1" x2="1" y2="1">
+  <stop stop-color="#755fae"/><stop offset=".35" stop-color="#a386fa"/><stop offset=".65" stop-color="#b8a3ec"/><stop offset="1" stop-color="#7055a4"/>
+</linearGradient>
+<linearGradient id="bottom" x1="0" y1=".8" x2="1" y2="0">
+  <stop stop-color="#a58ae1"/><stop offset=".47" stop-color="#e5d8ff"/><stop offset="1" stop-color="#f6f1ff"/>
+</linearGradient>
+<g id="ribbon">
+  <path fill="#43355f" d="M26 24h122v10l-13 28-61 43h62v9l-14 28H4v-10l16-32 61-44H13v-7z"/>
+  <path fill="url(#top)" d="M26 20h122l-14 30H12z"/>
+  <path fill="url(#fold)" d="m134 50-79 56H15l78-56z"/>
+  <path fill="url(#bottom)" d="M27 102h110l-15 30H3l12-26 6-4z"/>
+  <path fill="none" stroke="#fff" stroke-opacity=".52" stroke-width=".9" d="M26.5 20.7h120M15.5 106l77.8-55.5M29 102.7h106"/>
+  <path fill="#d9ff73" d="m18 60 26 12-39 22z"/>
+</g>
+  <linearGradient id="sky" x2="1" y2=".25"><stop stop-color="#14131a"/><stop offset=".45" stop-color="#191620"/><stop offset="1" stop-color="#302638"/></linearGradient>
+  <radialGradient id="halo"><stop stop-color="#8f6dda" stop-opacity=".28"/><stop offset="1" stop-color="#413049" stop-opacity="0"/></radialGradient>
+  <linearGradient id="trail" x1="0" y1="1" x2=".9" y2="0"><stop stop-color="#a487c8" stop-opacity="0"/><stop offset=".45" stop-color="#87799b" stop-opacity=".5"/><stop offset="1" stop-color="#b7a1d6" stop-opacity=".13"/></linearGradient>
+  <linearGradient id="progress"><stop stop-color="#8eac52" stop-opacity=".15"/><stop offset="1" stop-color="#d9ff73"/></linearGradient>
+  <pattern id="dots" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".65" fill="#cfc3e8" opacity=".21"/></pattern>
+  <mask id="dotfall"><ellipse cx="979" cy="142" rx="350" ry="215" fill="url(#fade)"/></mask>
+  <radialGradient id="fade"><stop stop-color="white"/><stop offset="1" stop-color="black"/></radialGradient>
+  <clipPath id="panel"><rect width="1280" height="384" rx="18"/></clipPath>
+</defs>
+<g clip-path="url(#panel)">
+  <path fill="url(#sky)" d="M0 0h1280v384H0z"/>
+  <ellipse cx="957" cy="167" rx="390" ry="223" fill="url(#halo)"/>
+  <rect x="532" width="748" height="318" fill="url(#dots)" mask="url(#dotfall)"/>
+  <g fill="none" stroke="url(#trail)" stroke-width="1"><path transform="translate(0 0)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(4 -3)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(8 -6)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(12 -9)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(16 -12)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(20 -15)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(24 -18)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(28 -21)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(32 -24)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(36 -27)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(40 -30)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(44 -33)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(48 -36)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(52 -39)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(56 -42)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(60 -45)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/>
+<path transform="translate(64 -48)" d="M515 310 801 89l184 0-216 166h209l147-114h153"/></g>
+  <g transform="translate(808 12) rotate(-8 184 159) scale(1.97)">
+    <use xlink:href="#ribbon"/>
+  </g>
+  <g font-family="'Menlo','DejaVu Sans Mono','Courier New',monospace">
+    <path d="M60 44h7v15h-7zm11 0h4v15h-4zm8 0h2v15h-2z" fill="#d9ff73"/>
+    <text x="96" y="60" fill="#e4e0e9" font-size="23" font-weight="600" letter-spacing="4.5">ZHIFAN</text>
+  </g>
+  <text x="52" y="209" fill="#f7f5fa" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif" font-weight="800" font-size="137" letter-spacing="-6">知返</text>
+  <text x="61" y="265" fill="#d3ccd9" font-family="'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif" font-size="32" font-weight="500" letter-spacing="2">视频与文档学习工作台</text>
+  <path d="M58 322.5h1164" stroke="#a799b3" stroke-opacity=".4"/>
+  <path d="M58 322.5h409" stroke="url(#progress)" stroke-width="2"/>
+  <g fill="none" stroke="#9d93a7" opacity=".52"><path d="M58 324v15" /><path d="M71 324v6" /><path d="M84 324v6" /><path d="M97 324v6" /><path d="M110 324v6" /><path d="M123 324v15" /><path d="M136 324v6" /><path d="M149 324v6" /><path d="M162 324v6" /><path d="M175 324v6" /><path d="M188 324v15" /><path d="M201 324v6" /><path d="M214 324v6" /><path d="M227 324v6" /><path d="M240 324v6" /><path d="M253 324v15" /><path d="M266 324v6" /><path d="M279 324v6" /><path d="M292 324v6" /><path d="M305 324v6" /><path d="M318 324v15" /><path d="M331 324v6" /><path d="M344 324v6" /><path d="M357 324v6" /><path d="M370 324v6" /><path d="M383 324v15" /><path d="M396 324v6" /><path d="M409 324v6" /><path d="M422 324v6" /><path d="M435 324v6" /><path d="M448 324v15" /><path d="M461 324v6" /><path d="M474 324v6" /><path d="M487 324v6" /><path d="M500 324v6" /><path d="M513 324v15" /><path d="M526 324v6" /><path d="M539 324v6" /><path d="M552 324v6" /><path d="M565 324v6" /><path d="M578 324v15" /><path d="M591 324v6" /><path d="M604 324v6" /><path d="M617 324v6" /><path d="M630 324v6" /><path d="M643 324v15" /><path d="M656 324v6" /><path d="M669 324v6" /><path d="M682 324v6" /><path d="M695 324v6" /><path d="M708 324v15" /><path d="M721 324v6" /><path d="M734 324v6" /><path d="M747 324v6" /><path d="M760 324v6" /><path d="M773 324v15" /><path d="M786 324v6" /><path d="M799 324v6" /><path d="M812 324v6" /><path d="M825 324v6" /><path d="M838 324v15" /><path d="M851 324v6" /><path d="M864 324v6" /><path d="M877 324v6" /><path d="M890 324v6" /><path d="M903 324v15" /><path d="M916 324v6" /><path d="M929 324v6" /><path d="M942 324v6" /><path d="M955 324v6" /><path d="M968 324v15" /><path d="M981 324v6" /><path d="M994 324v6" /><path d="M1007 324v6" /><path d="M1020 324v6" /><path d="M1033 324v15" /><path d="M1046 324v6" /><path d="M1059 324v6" /><path d="M1072 324v6" /><path d="M1085 324v6" /><path d="M1098 324v15" /><path d="M1111 324v6" /><path d="M1124 324v6" /><path d="M1137 324v6" /><path d="M1150 324v6" /><path d="M1163 324v15" /><path d="M1176 324v6" /><path d="M1189 324v6" /><path d="M1202 324v6" /><path d="M1215 324v6" /></g>
+  <path d="M460 306h14l-7 8z" fill="#d9ff73"/><path d="M467 313v23" stroke="#d9ff73" stroke-width="1.6"/>
+  <g font-family="'Menlo','DejaVu Sans Mono','Courier New',monospace" font-size="16" letter-spacing="1.4">
+    <text x="58" y="359" fill="#c3bbc9">00:00</text>
+    <text x="467" y="359" fill="#d9ff73" text-anchor="middle">09:45</text>
+    <text x="748" y="359" fill="#c3bbc9" text-anchor="middle">16:30</text>
+    <text x="1222" y="359" text-anchor="end" fill="#c3bbc9">VIDEO / MARKDOWN</text>
+  </g>
+</g></svg>
