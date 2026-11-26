@@ -1,3 +1,5 @@
+import { ScopePicker } from "./ScopePicker";
+import { Files, FileText } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUp, BookOpen, ChevronDown, GitBranch, MessageSquarePlus, Sparkles } from "lucide-react";
 import Markdown from "react-markdown";
@@ -159,10 +161,11 @@ export function DocumentChat({selected, docs, saved, openSource, onSave}: {
         readOnly={busy} placeholder="输入问题，或继续追问…" className="block max-h-[25dvh] w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus-visible:outline-primary"
         onKeyDown={e => {if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}}/>
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <select aria-label="检索范围" className="max-w-[55%] rounded-md border border-border bg-background p-1.5" value={scope} disabled={busy}
-          onChange={e => {setScope(e.target.value); reset();}}>
-          <option value="">全部文档</option>{docs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
+        <ScopePicker value={scope} disabled={busy} onChange={next => {setScope(next); reset();}}
+          groups={[
+            {label: "资料范围", icon: Files, items: [{value: "", name: "全部文档"}]},
+            {label: "文档", icon: FileText, items: docs.map(d => ({value: d.id, name: d.name}))},
+          ]}/>
         <label className="flex items-center gap-1.5 text-muted-foreground" title="只根据文档回答，关闭网页搜索和模型补充讲解">
           <input type="checkbox" checked={strict} disabled={busy} onChange={e => {setStrict(e.target.checked); reset();}}/>仅用文档
         </label>
